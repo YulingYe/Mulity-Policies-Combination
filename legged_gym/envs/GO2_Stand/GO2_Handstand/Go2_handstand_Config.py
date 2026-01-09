@@ -3,7 +3,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class GO2Cfg_Handstand( LeggedRobotCfg ):
 
     class env:
-        frame_stack = 1 #action stack
+        frame_stack = 10 #action stack
         c_frame_stack = 1 #critic 网络的堆叠帧数
         num_single_obs = 48 #这个是传感器可以获得到的信息
         num_observations = int(frame_stack * num_single_obs) # 10帧正常的观测
