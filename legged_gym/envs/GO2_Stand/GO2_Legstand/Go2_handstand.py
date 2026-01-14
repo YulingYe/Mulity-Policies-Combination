@@ -296,7 +296,7 @@ class Go2_stand_Robot(BaseTask):
             self.obs_imu,#6 角速度，欧拉角XYZ
             self.obs_motor,#24
             self.actions,   # 12
-            self.stand_command
+            self.stand_command # 站立指令 1
         ), dim=-1)
         # print("obs_buf",obs_buf.shape)
         if self.add_noise:  

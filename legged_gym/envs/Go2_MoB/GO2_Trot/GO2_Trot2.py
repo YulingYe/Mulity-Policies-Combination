@@ -1,3 +1,6 @@
+## Combine terminatal states
+
+
 import os
 import numpy as np
 

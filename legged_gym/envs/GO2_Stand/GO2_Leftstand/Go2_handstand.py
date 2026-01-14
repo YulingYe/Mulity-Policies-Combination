@@ -289,7 +289,7 @@ class Go2_stand_Robot(BaseTask):
         obs_buf = torch.cat((
             self.command_input,  # 5 = 2D(sin cos) + 3D(vel_x, vel_y, aug_vel_yaw)
             self.obs_imu,#6 角速度，欧拉角XYZ
-            self.obs_motor,#24
+            self.obs_motor,#24 dof_pos,dof_vel
             self.actions,   # 12
             self.stand_command
         ), dim=-1)

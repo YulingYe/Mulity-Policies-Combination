@@ -12,7 +12,7 @@ from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_config2 import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_config1 import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
 
 
 def get_euler_xyz_tensor(quat):
