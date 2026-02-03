@@ -271,9 +271,9 @@ class GO2_Trot_Robot(BaseTask):
             self.obs_imu = torch.cat((self.base_ang_vel * self.obs_scales.ang_vel, self.base_euler_xyz * self.obs_scales.quat), 1)
 
         obs_buf = torch.cat((
-            self.command_input,  # 5 = 2D(sin cos) + 3D(vel_x, vel_y, aug_vel_yaw)
-            self.obs_imu,#6 角速度，欧拉角XYZ
-            self.obs_motor,#24
+            self.command_input,  # 5 = 2D(sin cos) + 3D(vel_x, vel_y, aug_vel_yaw) phase, xyz command
+            self.obs_imu,#6 角速度，欧拉角XYZ ang_vel, base_quat
+            self.obs_motor,#24  dof_pos, dof_vel
             self.actions,   # 12
         ), dim=-1)
         # print("obs_buf",obs_buf.shape)
