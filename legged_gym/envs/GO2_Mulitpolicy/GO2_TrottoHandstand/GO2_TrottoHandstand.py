@@ -12,7 +12,7 @@ from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_config1 import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configT import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
 
 
 def get_euler_xyz_tensor(quat):
@@ -23,6 +23,7 @@ def get_euler_xyz_tensor(quat):
     return euler_xyz
 
 class GO2_TrottoHandstand_Robot(BaseTask):
+    
     def __init__(self, cfg: GO2_TrottoHandstand_Cfg, sim_params, physics_engine, sim_device, headless):
         """ Parses the provided config file,
             calls create_sim() (which creates, simulation, terrain and environments),
@@ -78,30 +79,32 @@ class GO2_TrottoHandstand_Robot(BaseTask):
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
     
-    def update_cmd_action_latency_buffer(self):
-        actions_scaled = self.actions * self.cfg.control.action_scale
-        if self.cfg.domain_rand.add_cmd_action_latency:
-            self.cmd_action_latency_buffer[:,:,1:] = self.cmd_action_latency_buffer[:,:,:self.cfg.domain_rand.range_cmd_action_latency[1]].clone()
-            self.cmd_action_latency_buffer[:,:,0] = actions_scaled.clone()
-            action_delayed = self.cmd_action_latency_buffer[torch.arange(self.num_envs),:,self.cmd_action_latency_simstep.long()]
-        else:
-            action_delayed = actions_scaled
+    # def update_cmd_action_latency_buffer(self):
+    #     # trot函数 影响handstand   
+    #     actions_scaled = self.actions * self.cfg.control.action_scale
+    #     if self.cfg.domain_rand.add_cmd_action_latency:
+    #         self.cmd_action_latency_buffer[:,:,1:] = self.cmd_action_latency_buffer[:,:,:self.cfg.domain_rand.range_cmd_action_latency[1]].clone()
+    #         self.cmd_action_latency_buffer[:,:,0] = actions_scaled.clone()
+    #         action_delayed = self.cmd_action_latency_buffer[torch.arange(self.num_envs),:,self.cmd_action_latency_simstep.long()]
+    #     else:
+    #         action_delayed = actions_scaled
         
-        return action_delayed
+    #     return action_delayed
 
-    def update_obs_latency_buffer(self):#????为什么这个的调用频率1000HZ
-        if self.cfg.domain_rand.randomize_obs_motor_latency:
-            q = (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos
-            dq = self.dof_vel * self.obs_scales.dof_vel
-            self.obs_motor_latency_buffer[:,:,1:] = self.obs_motor_latency_buffer[:,:,:self.cfg.domain_rand.range_obs_motor_latency[1]].clone()
-            self.obs_motor_latency_buffer[:,:,0] = torch.cat((q, dq), 1).clone()
-        if self.cfg.domain_rand.randomize_obs_imu_latency:
-            self.gym.refresh_actor_root_state_tensor(self.sim)
-            self.base_quat[:] = self.root_states[:, 3:7]
-            self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-            self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
-            self.obs_imu_latency_buffer[:,:,1:] = self.obs_imu_latency_buffer[:,:,:self.cfg.domain_rand.range_obs_imu_latency[1]].clone()
-            self.obs_imu_latency_buffer[:,:,0] = torch.cat((self.base_ang_vel * self.obs_scales.ang_vel, self.base_euler_xyz * self.obs_scales.quat), 1).clone()
+    # def update_obs_latency_buffer(self):#????为什么这个的调用频率1000HZ
+    #       #trot函数 影响handstand
+    #     if self.cfg.domain_rand.randomize_obs_motor_latency:
+    #         q = (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos
+    #         dq = self.dof_vel * self.obs_scales.dof_vel
+    #         self.obs_motor_latency_buffer[:,:,1:] = self.obs_motor_latency_buffer[:,:,:self.cfg.domain_rand.range_obs_motor_latency[1]].clone()
+    #         self.obs_motor_latency_buffer[:,:,0] = torch.cat((q, dq), 1).clone()
+    #     if self.cfg.domain_rand.randomize_obs_imu_latency:
+    #         self.gym.refresh_actor_root_state_tensor(self.sim)
+    #         self.base_quat[:] = self.root_states[:, 3:7]
+    #         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+    #         self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
+    #         self.obs_imu_latency_buffer[:,:,1:] = self.obs_imu_latency_buffer[:,:,:self.cfg.domain_rand.range_obs_imu_latency[1]].clone()
+    #         self.obs_imu_latency_buffer[:,:,0] = torch.cat((self.base_ang_vel * self.obs_scales.ang_vel, self.base_euler_xyz * self.obs_scales.quat), 1).clone()
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -339,7 +342,7 @@ class GO2_TrottoHandstand_Robot(BaseTask):
         cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
-    # #------------- Callbacks --------------
+    #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
             Called During environment creation.
@@ -588,6 +591,7 @@ class GO2_TrottoHandstand_Robot(BaseTask):
         if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]:
             self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
             self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
+    
     def _get_noise_scale_vec(self, cfg):
         """ Sets a vector used to scale the noise added to the observations.
             [NOTE]: Must be adapted when changing the observations structure
@@ -918,7 +922,7 @@ class GO2_TrottoHandstand_Robot(BaseTask):
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
-    #------------ reward functions----------------
+    #------------trot reward functions----------------
 
     def _reward_trot(self):
         """
@@ -1060,7 +1064,10 @@ class GO2_TrottoHandstand_Robot(BaseTask):
         # Penalize motion at zero commands
         return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
     
-    #-------------------------000-----------000-------000---------------------------------
+
+
+    #-------------------------orign_handstand_env---------------------------------
+
 
     # def __init__(self, cfg: GO2_TrottoHandstand_Cfg, sim_params, physics_engine, sim_device, headless):
     #     """ Parses the provided config file,
@@ -1296,7 +1303,7 @@ class GO2_TrottoHandstand_Robot(BaseTask):
     #     cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
     #     self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
-    #------------- Callbacks --------------
+    # #------------- Callbacks --------------
     # def _process_rigid_shape_props(self, props, env_id):
     #     """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
     #         Called During environment creation.
@@ -1521,7 +1528,6 @@ class GO2_TrottoHandstand_Robot(BaseTask):
     #         noise_vec[48:235] = noise_scales.height_measurements* noise_level * self.obs_scales.height_measurements
     #     return noise_vec
 
-    #----------------------------------------
     # def _init_buffers(self):
     #     """ Initialize torch tensors which will contain simulation states and processed quantities
     #     """
@@ -1804,26 +1810,26 @@ class GO2_TrottoHandstand_Robot(BaseTask):
 
     #     self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
-    # def _draw_debug_vis(self):
-    #     """ Draws visualizations for dubugging (slows down simulation a lot).
-    #         Default behaviour: draws height measurement points
-    #     """
-    #     # draw height lines
-    #     if not self.terrain.cfg.measure_heights:
-    #         return
-    #     self.gym.clear_lines(self.viewer)
-    #     self.gym.refresh_rigid_body_state_tensor(self.sim)
-    #     sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
-    #     for i in range(self.num_envs):
-    #         base_pos = (self.root_states[i, :3]).cpu().numpy()
-    #         heights = self.measured_heights[i].cpu().numpy()
-    #         height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
-    #         for j in range(heights.shape[0]):
-    #             x = height_points[j, 0] + base_pos[0]
-    #             y = height_points[j, 1] + base_pos[1]
-    #             z = heights[j]
-    #             sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
-    #             gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], sphere_pose) 
+    def _draw_debug_vis(self):
+        """ Draws visualizations for dubugging (slows down simulation a lot).
+            Default behaviour: draws height measurement points
+        """
+        # draw height lines
+        if not self.terrain.cfg.measure_heights:
+            return
+        self.gym.clear_lines(self.viewer)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
+        for i in range(self.num_envs):
+            base_pos = (self.root_states[i, :3]).cpu().numpy()
+            heights = self.measured_heights[i].cpu().numpy()
+            height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
+            for j in range(heights.shape[0]):
+                x = height_points[j, 0] + base_pos[0]
+                y = height_points[j, 1] + base_pos[1]
+                z = heights[j]
+                sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], sphere_pose) 
 
     def _init_height_points(self):
         """ Returns points at which the height measurments are sampled (in base frame)
@@ -1841,45 +1847,45 @@ class GO2_TrottoHandstand_Robot(BaseTask):
         points[:, :, 1] = grid_y.flatten()
         return points
 
-    # def _get_heights(self, env_ids=None):
-    #     """ Samples heights of the terrain at required points around each robot.
-    #         The points are offset by the base's position and rotated by the base's yaw
+    def _get_heights(self, env_ids=None):
+        """ Samples heights of the terrain at required points around each robot.
+            The points are offset by the base's position and rotated by the base's yaw
 
-    #     Args:
-    #         env_ids (List[int], optional): Subset of environments for which to return the heights. Defaults to None.
+        Args:
+            env_ids (List[int], optional): Subset of environments for which to return the heights. Defaults to None.
 
-    #     Raises:
-    #         NameError: [description]
+        Raises:
+            NameError: [description]
 
-    #     Returns:
-    #         [type]: [description]
-    #     """
-    #     if self.cfg.terrain.mesh_type == 'plane':
-    #         return torch.zeros(self.num_envs, self.num_height_points, device=self.device, requires_grad=False)
-    #     elif self.cfg.terrain.mesh_type == 'none':
-    #         raise NameError("Can't measure height with terrain mesh type 'none'")
+        Returns:
+            [type]: [description]
+        """
+        if self.cfg.terrain.mesh_type == 'plane':
+            return torch.zeros(self.num_envs, self.num_height_points, device=self.device, requires_grad=False)
+        elif self.cfg.terrain.mesh_type == 'none':
+            raise NameError("Can't measure height with terrain mesh type 'none'")
 
-    #     if env_ids:
-    #         points = quat_apply_yaw(self.base_quat[env_ids].repeat(1, self.num_height_points), self.height_points[env_ids]) + (self.root_states[env_ids, :3]).unsqueeze(1)
-    #     else:
-    #         points = quat_apply_yaw(self.base_quat.repeat(1, self.num_height_points), self.height_points) + (self.root_states[:, :3]).unsqueeze(1)
+        if env_ids:
+            points = quat_apply_yaw(self.base_quat[env_ids].repeat(1, self.num_height_points), self.height_points[env_ids]) + (self.root_states[env_ids, :3]).unsqueeze(1)
+        else:
+            points = quat_apply_yaw(self.base_quat.repeat(1, self.num_height_points), self.height_points) + (self.root_states[:, :3]).unsqueeze(1)
 
-    #     points += self.terrain.cfg.border_size
-    #     points = (points/self.terrain.cfg.horizontal_scale).long()
-    #     px = points[:, :, 0].view(-1)
-    #     py = points[:, :, 1].view(-1)
-    #     px = torch.clip(px, 0, self.height_samples.shape[0]-2)
-    #     py = torch.clip(py, 0, self.height_samples.shape[1]-2)
+        points += self.terrain.cfg.border_size
+        points = (points/self.terrain.cfg.horizontal_scale).long()
+        px = points[:, :, 0].view(-1)
+        py = points[:, :, 1].view(-1)
+        px = torch.clip(px, 0, self.height_samples.shape[0]-2)
+        py = torch.clip(py, 0, self.height_samples.shape[1]-2)
 
-    #     heights1 = self.height_samples[px, py]
-    #     heights2 = self.height_samples[px+1, py]
-    #     heights3 = self.height_samples[px, py+1]
-    #     heights = torch.min(heights1, heights2)
-    #     heights = torch.min(heights, heights3)
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px+1, py]
+        heights3 = self.height_samples[px, py+1]
+        heights = torch.min(heights1, heights2)
+        heights = torch.min(heights, heights3)
 
-    #     return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
+        return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
 
-    # #------------ reward functions----------------
+    #------------handstand reward functions----------------
     # def _reward_lin_vel_z(self):
     #     # Penalize z axis base linear velocity
     #     return torch.exp(-torch.abs(self.base_lin_vel[:, 0])*10)

@@ -1,13 +1,13 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class GO2Cfg_Handstand( LeggedRobotCfg ):
+class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
 
     class env:
         frame_stack = 1 #action stack
         c_frame_stack = 1 #critic 网络的堆叠帧数
         num_single_obs = 48 #这个是传感器可以获得到的信息
         num_observations = int(frame_stack * num_single_obs) # 10帧正常的观测
-        single_num_privileged_obs = 51  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
+        single_num_privileged_obs = 68  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
         num_privileged_obs = int(c_frame_stack * single_num_privileged_obs) # 3帧特权观测
         num_actions = 12
         num_envs = 4096
@@ -43,14 +43,14 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
     class commands:
         curriculum = True
-        max_curriculum = 1.
+        max_curriculum = 2.0
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 5. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
         class ranges:
-            lin_vel_x = [-0.8,0.8] # min max [m/s]
-            lin_vel_y = [-0.8, 0.8]   # min max [m/s]
-            ang_vel_yaw = [-0.8, 0.8]    # min max [rad/s]
+            lin_vel_x = [-1.0,1.0] # min max [m/s]
+            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
+            ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
     class init_state( LeggedRobotCfg.init_state ):
@@ -58,15 +58,16 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
         rot = [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
-        default_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.1,   # [rad]
-            'RL_hip_joint': 0.1,   # [rad]
-            'FR_hip_joint': -0.1 ,  # [rad]
-            'RR_hip_joint': -0.1,   # [rad]
+        default_joint_angles = {
+            'FL_hip_joint': 0.0,   # [rad]
+            'RL_hip_joint': 0.0,   # [rad]
+            'FR_hip_joint': -0. ,  # [rad]
+            'RR_hip_joint': -0.0,   # [rad]
+
             'FL_thigh_joint': 0.8,     # [rad]
-            'RL_thigh_joint': 1.0,#1.,   # [rad]
+            'RL_thigh_joint': 0.8,   # [rad]
             'FR_thigh_joint': 0.8,     # [rad]
-            'RR_thigh_joint': 1.0,#1.,   # [rad]
+            'RR_thigh_joint': 0.8,   # [rad]
 
             'FL_calf_joint': -1.5,   # [rad]
             'RL_calf_joint': -1.5,    # [rad]
@@ -80,15 +81,16 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             'RR_hip_joint': 0.,   # [rad]
 
             'FL_thigh_joint': 1.75,     # [rad]
-            'RL_thigh_joint': 2.15,#1.,   # [rad] # defult 2.25
+            'RL_thigh_joint': 2.25,#1.,   # [rad]
             'FR_thigh_joint': 1.75,     # [rad]
-            'RR_thigh_joint': 2.29,#1.,   # [rad] # defult 2.25
+            'RR_thigh_joint': 2.25,#1.,   # [rad]
 
             'FL_calf_joint': -1.75,   # [rad]
             'RL_calf_joint': -1.75,    # [rad]
             'FR_calf_joint': -1.75,  # [rad]
             'RR_calf_joint': -1.75,    # [rad]
         }
+
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
@@ -132,32 +134,85 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 0.5
+        max_push_ang_vel = 0.6
+
+        randomize_motor_zero_offset = True
+        randomize_base_mass = True
+        added_base_mass_range = [-1,1]
+
+        randomize_link_mass = True
+        multiplied_link_mass_range = [0.9, 1.1]
+
+        randomize_base_com = True
+        added_base_com_range = [-0.02, 0.02]
+
+        randomize_pd_gains = True
+        stiffness_multiplier_range = [0.9, 1.1]  
+        damping_multiplier_range = [0.9, 1.1]   
+
+        randomize_motor_zero_offset = True
+        motor_zero_offset_range = [-0.035, 0.035] # Offset to add to the motor angles
+
+
+        # range to contain the real joint armature 
+
+        add_obs_latency = True # no latency for obs_action
+        randomize_obs_motor_latency = True
+        randomize_obs_imu_latency = True
+        range_obs_motor_latency = [1, 3]
+        range_obs_imu_latency = [1, 3]
+        
+        add_cmd_action_latency = True
+        randomize_cmd_action_latency = True
+        range_cmd_action_latency = [1, 3]
+
     class rewards:
         class scales:
+            # termination = -0.0
+            # tracking_lin_vel = 2.5
+            # tracking_ang_vel = 2.5
+            # lin_vel_z = 0.2
+            # ang_vel_xy = 0.2
+            # handstand_orientation = 5.0 #0.1 1.0
+            # torques = -0.0002
+            # dof_vel = -0.
+            # dof_acc = -5.5e-4
+            # base_height = 0.6 #0.1 
+            # handstand_feet_on_air =  0.4
+            # collision = -1.
+            # feet_stumble = -0.0 
+            # action_rate = -0.01
+            # default_pos =-0.3####
+            # # contact=0.3
+
             termination = -0.0
-            tracking_lin_vel = 2.5
-            tracking_ang_vel = 2.5
+            tracking_lin_vel = 4.
+            tracking_ang_vel = 4.
             lin_vel_z = 0.2
-            ang_vel_xy = 0.2
-            handstand_orientation = 5.0 #0.1 1.0
-            torques = -0.0002
-            dof_vel = -0.
-            dof_acc = -5.5e-4
-            base_height = 0.6 #0.1 
-            handstand_feet_on_air =  0.4
+            ang_vel_xy = -0.02
+            orientation = 0.2
+            torques = -0.0002#
+            dof_acc = -2.5e-7#-7
             collision = -1.
-            feet_stumble = -0.0 
             action_rate = -0.01
-            default_pos =-0.3####
-            # contact=0.3
+            stand_still = -1.
+            base_height=0.2
+            trot=1.0
+            feet_clearance=1.0
+            default_hip_pos=-1.0
+            default_pos=-0.15
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 0.9 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
-        base_height_target = 0.52#0.25
-        max_contact_force = 200. # forces above this value are penalized
+        base_height_target = 0.29#0.25
+        max_contact_force = 100. # forces above this value are penalized
+        cycle_time=0.5
+        
+        target_foot_height=0.2
+
     class normalization:
         class obs_scales:
             lin_vel = 2.0
@@ -165,6 +220,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             dof_pos = 1.0
             dof_vel = 0.05
             height_measurements = 5.0
+            quat = 1.
         clip_observations = 100.
         clip_actions = 100.
 
@@ -177,6 +233,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             lin_vel = 0.1
             ang_vel = 0.2
             gravity = 0.05
+            quat = 0.1
             height_measurements = 0.1
 
     # viewer camera:
@@ -205,7 +262,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 
-class GO2CfgPPO_Handstand(LeggedRobotCfgPPO):
+class GO2_TrottoHandstand_PPO(LeggedRobotCfgPPO):
     seed = 1
     runner_class_name = 'OnPolicyRunner'
     class policy:
@@ -250,7 +307,7 @@ class GO2CfgPPO_Handstand(LeggedRobotCfgPPO):
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_handstand_3.5'
+        experiment_name = 'go2_trottohandstandT'
         run_name = ''
         # load and resume
         resume = False

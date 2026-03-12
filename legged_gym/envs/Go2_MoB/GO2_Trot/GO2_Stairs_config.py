@@ -258,7 +258,7 @@ class GO2_Stairs_PPO_Yu(LeggedRobotCfgPPO):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24 # per iteration
-        max_iterations = 30000 # number of policy updates
+        max_iterations = 15000 # number of policy updates
 
         # logging
         save_interval = 100 # check for potential saves every this many iterations

@@ -3,7 +3,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class GO2_Trot_Cfg_Yu( LeggedRobotCfg ):
     class env:
         # change the observation dim
-        frame_stack = 3 #action stack
+        frame_stack = 1 #action stack
         c_frame_stack = 3 #critic 网络的堆叠帧数
         num_envs = 4096
         num_single_obs = 47 #这个是传感器可以获得到的信息

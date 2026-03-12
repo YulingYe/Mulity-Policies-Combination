@@ -4,7 +4,7 @@ from legged_gym.envs.Go2_MoB.GO2_JUMP.go2_jump_env import GO2_JUMP_Robot
 from legged_gym.envs.Go2_MoB.GO2_JUMP.GO2_JUMP_config import GO2_JUMP_Cfg_Yu,GO2_JUMP_PPO_Yu
 
 
-from legged_gym.envs.Go2_MoB.GO2_Trot.GO2_Trot2 import GO2_Trot_Robot
+from legged_gym.envs.Go2_MoB.GO2_Trot.GO2_Trot import GO2_Trot_Robot
 from legged_gym.envs.Go2_MoB.GO2_Trot.GO2_Trot_config import GO2_Trot_Cfg_Yu,GO2_Trot_PPO_Yu
 
 from legged_gym.envs.Go2_MoB.GO2_Trot.GO2_Stairs import GO2_Stairs_Robot
@@ -28,7 +28,7 @@ from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_env import Go2_Spr
 from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_config import GO2_Spring_JUMP_Cfg_Yu,GO2_Spring_JUMP_PPO_Yu
 
 from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand  import GO2_TrottoHandstand_Robot
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_config2  import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configT import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
 
 
 

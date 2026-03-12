@@ -80,10 +80,10 @@ class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
             'FR_hip_joint': 0. ,  # [rad]
             'RR_hip_joint': 0.,   # [rad]
 
-            'FL_thigh_joint': 1.75,     # [rad]
-            'RL_thigh_joint': 2.25,#1.,   # [rad]
-            'FR_thigh_joint': 1.75,     # [rad]
-            'RR_thigh_joint': 2.25,#1.,   # [rad]
+            'FL_thigh_joint': 1.75,     # [rad]  # defult 1.75
+            'RL_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
+            'FR_thigh_joint': 1.75,     # [rad]  # defult 1.75
+            'RR_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
 
             'FL_calf_joint': -1.75,   # [rad]
             'RL_calf_joint': -1.75,    # [rad]
@@ -166,40 +166,40 @@ class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
 
     class rewards:
         class scales:
-            # termination = -0.0
-            # tracking_lin_vel = 2.5
-            # tracking_ang_vel = 2.5
-            # lin_vel_z = 0.2
-            # ang_vel_xy = 0.2
-            # handstand_orientation = 5.0#0.1 1.0
-            # torques = -0.0002
-            # dof_vel = -0.
-            # dof_acc = -5.5e-4
-            # base_height = 0.6#0.1 
-            # handstand_feet_on_air =  0.4
-            # collision = -1.
-            # feet_stumble = -0.0 
-            # action_rate = -0.01
-            # default_pos =-0.3####
-            # # contact=0.3
-
-            # trotting
             termination = -0.0
-            tracking_lin_vel = 4.
-            tracking_ang_vel = 4.
+            tracking_lin_vel = 2.5
+            tracking_ang_vel = 2.5
             lin_vel_z = 0.2
-            ang_vel_xy = -0.02
-            orientation = 0.2
-            torques = -0.0002#
-            dof_acc = -2.5e-7#-7
+            ang_vel_xy = 0.2
+            handstand_orientation = 5.0 #0.1 1.0
+            torques = -0.0002
+            dof_vel = -0.
+            dof_acc = -5.5e-4
+            base_height = 0.6 #0.1 
+            handstand_feet_on_air =  0.4
             collision = -1.
+            feet_stumble = -0.0 
             action_rate = -0.01
-            stand_still = -1.
-            base_height=0.2
-            trot=1.0
-            feet_clearance=1.0
-            default_hip_pos=-1.0
-            default_pos=-0.15
+            default_pos =-0.3####
+            # contact=0.3
+
+            # # trotting
+            # termination = -0.0
+            # tracking_lin_vel = 4.
+            # tracking_ang_vel = 4.
+            # lin_vel_z = 0.2
+            # ang_vel_xy = -0.02
+            # orientation = 0.2
+            # torques = -0.0002#
+            # dof_acc = -2.5e-7#-7
+            # collision = -1.
+            # action_rate = -0.01
+            # stand_still = -1.
+            # base_height=0.2
+            # trot=1.0
+            # feet_clearance=1.0
+            # default_hip_pos=-1.0
+            # default_pos=-0.15
 
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
@@ -207,7 +207,7 @@ class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
-        base_height_target = 0.29 #tort:0.29 handstand:0.52
+        base_height_target = 0.52 #tort:0.29 handstand:0.52
         max_contact_force = 200. # forces above this value are penalized
         cycle_time=0.5
         target_foot_height=0.2  #trotting
@@ -216,7 +216,7 @@ class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
         class obs_scales:
             lin_vel = 2.0
             ang_vel = 0.25
-            dof_pos = 1.0
+            dof_pos = 1.0  # 1.0
             dof_vel = 0.05
             height_measurements = 5.0
             quat = 1.
@@ -307,7 +307,7 @@ class GO2_TrottoHandstand_PPO(LeggedRobotCfgPPO):
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_trottohandstand1'
+        experiment_name = 'go2_trottohandstand2'
         run_name = ''
         # load and resume
         resume = False

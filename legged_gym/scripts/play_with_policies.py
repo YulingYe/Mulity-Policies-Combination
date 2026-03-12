@@ -120,8 +120,8 @@ def play(args):
     actor_hidden_dims=train_cfg.policy.actor_hidden_dims,
     init_noise_std=train_cfg.policy.init_noise_std)
 
-    model_path1 = '/media/laoye/Localdisk/Ubuntu2004Linux/YuSongmin_go2_gym/logs/go2_trottohandstand1/Aug07_16-02-31_/model_8000.pt'
-    model_path2 = '/media/laoye/Localdisk/Ubuntu2004Linux/YuSongmin_go2_gym/logs/go2_trottohandstand2/Aug06_20-28-11_/model_8000.pt'
+    model_path1 = '/media/laoye/Localdisk/Ubuntu2004Linux/YuSongmin_go2_gym/logs/go2_trottohandstandT/Mar11_16-40-19_/model_8000.pt'
+    model_path2 = '/media/laoye/Localdisk/Ubuntu2004Linux/YuSongmin_go2_gym/logs/go2_trottohandstandH/Mar11_11-01-27_/model_8000.pt'
     model1 = model1.to("cuda:0")
     model2 = model2.to("cuda:0")
     

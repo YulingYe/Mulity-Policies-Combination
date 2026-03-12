@@ -1,13 +1,13 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class GO2Cfg_Handstand( LeggedRobotCfg ):
+class GO2_TrottoHandstand_Cfg( LeggedRobotCfg ):
 
     class env:
         frame_stack = 1 #action stack
         c_frame_stack = 1 #critic 网络的堆叠帧数
         num_single_obs = 48 #这个是传感器可以获得到的信息
         num_observations = int(frame_stack * num_single_obs) # 10帧正常的观测
-        single_num_privileged_obs = 51  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
+        single_num_privileged_obs = 68  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
         num_privileged_obs = int(c_frame_stack * single_num_privileged_obs) # 3帧特权观测
         num_actions = 12
         num_envs = 4096
@@ -132,6 +132,38 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 0.5
+        max_push_ang_vel = 0.6
+
+        randomize_motor_zero_offset = True
+        randomize_base_mass = True
+        added_base_mass_range = [-1,1]
+
+        randomize_link_mass = True
+        multiplied_link_mass_range = [0.9, 1.1]
+
+        randomize_base_com = True
+        added_base_com_range = [-0.02, 0.02]
+
+        randomize_pd_gains = True
+        stiffness_multiplier_range = [0.9, 1.1]  
+        damping_multiplier_range = [0.9, 1.1]   
+
+        randomize_motor_zero_offset = True
+        motor_zero_offset_range = [-0.035, 0.035] # Offset to add to the motor angles
+
+
+        # range to contain the real joint armature 
+
+        add_obs_latency = True # no latency for obs_action
+        randomize_obs_motor_latency = True
+        randomize_obs_imu_latency = True
+        range_obs_motor_latency = [1, 3]
+        range_obs_imu_latency = [1, 3]
+        
+        add_cmd_action_latency = True
+        randomize_cmd_action_latency = True
+        range_cmd_action_latency = [1, 3]
+
     class rewards:
         class scales:
             termination = -0.0
@@ -158,6 +190,8 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
         soft_torque_limit = 1.
         base_height_target = 0.52#0.25
         max_contact_force = 200. # forces above this value are penalized
+        cycle_time=0.5
+
     class normalization:
         class obs_scales:
             lin_vel = 2.0
@@ -165,6 +199,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             dof_pos = 1.0
             dof_vel = 0.05
             height_measurements = 5.0
+            quat = 1.
         clip_observations = 100.
         clip_actions = 100.
 
@@ -177,6 +212,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             lin_vel = 0.1
             ang_vel = 0.2
             gravity = 0.05
+            quat = 0.1
             height_measurements = 0.1
 
     # viewer camera:
@@ -205,7 +241,7 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 
-class GO2CfgPPO_Handstand(LeggedRobotCfgPPO):
+class GO2_TrottoHandstand_PPO(LeggedRobotCfgPPO):
     seed = 1
     runner_class_name = 'OnPolicyRunner'
     class policy:
@@ -250,7 +286,7 @@ class GO2CfgPPO_Handstand(LeggedRobotCfgPPO):
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_handstand_3.5'
+        experiment_name = 'go2_trottohandstandH'
         run_name = ''
         # load and resume
         resume = False
