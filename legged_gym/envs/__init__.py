@@ -28,8 +28,10 @@ from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_env import Go2_Spr
 from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_config import GO2_Spring_JUMP_Cfg_Yu,GO2_Spring_JUMP_PPO_Yu
 
 from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand  import GO2_TrottoHandstand_Robot
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configT import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configH import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
 
+from legged_gym.envs.GO2_Mulitpolicy.GO2_StairstoHandstand.GO2_StairstoHandstand  import GO2_StairstoHandstand_Robot
+from legged_gym.envs.GO2_Mulitpolicy.GO2_StairstoHandstand.GO2_StairstoHandstand_configS import GO2_StairstoHandstand_Cfg,GO2_StairstoHandstand_PPO
 
 
 task_registry.register( "go2_trot", GO2_Trot_Robot, GO2_Trot_Cfg_Yu(), GO2_Trot_PPO_Yu())
@@ -40,5 +42,5 @@ task_registry.register( "go2_handstand_command", Go2_stand_Robot, GO2Cfg_Handsta
 task_registry.register( "go2_spring_jump", Go2_Spring_Jump, GO2_Spring_JUMP_Cfg_Yu(), GO2_Spring_JUMP_PPO_Yu())
 task_registry.register( "go2_backflip", Go2_BackFlip, GO2_BackFlip_Cfg_Yu(), GO2_BackFlip_PPO_Yu())
 task_registry.register( "go2_trottohandstand", GO2_TrottoHandstand_Robot, GO2_TrottoHandstand_Cfg(), GO2_TrottoHandstand_PPO())
-
+task_registry.register( "go2_stairstohandstand", GO2_StairstoHandstand_Robot, GO2_StairstoHandstand_Cfg(), GO2_StairstoHandstand_PPO())
 print("注册的任务:  ",task_registry.task_classes)

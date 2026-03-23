@@ -217,10 +217,10 @@ class Go2_stand(BaseTask):
             # 添加均匀分布的随机噪声（范围 [-noise_scale, noise_scale]）
             #????是否正确
         self.privileged_obs_buf = torch.cat((  
-                                    sin_phase,
-                                    cos_phase,
-                                    self.base_lin_vel * self.obs_scales.lin_vel,
-                                    self.stand_command,
+                                    sin_phase, #1
+                                    cos_phase, #1
+                                    self.base_lin_vel * self.obs_scales.lin_vel, #3
+                                    self.stand_command, #1
                                     self.base_ang_vel  * self.obs_scales.ang_vel,#3 基座角速度
                                     self.projected_gravity,#3 重力投影
                                     self.commands[:, :3] * self.commands_scale,#3 控制
