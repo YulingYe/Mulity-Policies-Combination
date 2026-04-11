@@ -268,11 +268,11 @@ class GO2CfgPPO_Handstand_Command(LeggedRobotCfgPPO):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24 # per iteration
-        max_iterations = 30000 # number of policy updates
+        max_iterations = 8000 # number of policy updates
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_handstand'
+        experiment_name = 'go2_handstand_4.6'
         run_name = ''
         # load and resume
         resume = False

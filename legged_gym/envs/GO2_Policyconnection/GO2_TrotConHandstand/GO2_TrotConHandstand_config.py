@@ -243,7 +243,7 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
 
 class GO2_TrotConHandstand_PPO(LeggedRobotCfgPPO):
     seed = 1
-    runner_class_name = 'OnPolicyRunner'
+    runner_class_name = 'LatsmoPolicyRunner'
     class policy:
         init_noise_std = 1.0
         actor_hidden_dims = [512, 256, 128]
@@ -279,14 +279,14 @@ class GO2_TrotConHandstand_PPO(LeggedRobotCfgPPO):
         frame_stack = 10
         sym_coef = 1.0
     class runner:
-        policy_class_name = 'ActorCritic'
-        algorithm_class_name = 'PPO'
+        policy_class_name = 'ActorCriticLatent'
+        algorithm_class_name = 'PPO_LAT'
         num_steps_per_env = 24 # per iteration
         max_iterations = 8000 # number of policy updates
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_trotconhandstandH'
+        experiment_name = 'go2_trotconhandstand'
         run_name = ''
         # load and resume
         resume = False

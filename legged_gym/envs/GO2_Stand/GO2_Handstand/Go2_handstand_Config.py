@@ -80,9 +80,9 @@ class GO2Cfg_Handstand( LeggedRobotCfg ):
             'RR_hip_joint': 0.,   # [rad]
 
             'FL_thigh_joint': 1.75,     # [rad]
-            'RL_thigh_joint': 2.15,#1.,   # [rad] # defult 2.25
+            'RL_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
             'FR_thigh_joint': 1.75,     # [rad]
-            'RR_thigh_joint': 2.29,#1.,   # [rad] # defult 2.25
+            'RR_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
 
             'FL_calf_joint': -1.75,   # [rad]
             'RL_calf_joint': -1.75,    # [rad]
@@ -250,7 +250,7 @@ class GO2CfgPPO_Handstand(LeggedRobotCfgPPO):
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_handstand_3.5'
+        experiment_name = 'go2_handstand_4.8'
         run_name = ''
         # load and resume
         resume = False

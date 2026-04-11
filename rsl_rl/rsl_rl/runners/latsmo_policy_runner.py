@@ -36,13 +36,13 @@ import statistics
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from rsl_rl.algorithms import PPO
-#from rsl_rl.algorithms import PPO_LAT
+#from rsl_rl.algorithms import PPO
+from rsl_rl.algorithms import PPO_LAT
 from rsl_rl.modules import ActorCritic, ActorCriticLatent, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
 
 
-class OnPolicyRunner:
+class LatsmoPolicyRunner:
 
     def __init__(self,
                  env: VecEnv,
@@ -65,7 +65,7 @@ class OnPolicyRunner:
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        self.alg: PPO_LAT = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
 
@@ -130,7 +130,7 @@ class OnPolicyRunner:
                 start = stop
                 self.alg.compute_returns(critic_obs)
             
-            mean_value_loss, mean_surrogate_loss ,systemloss= self.alg.update()
+            mean_value_loss, mean_surrogate_loss ,systemloss, temporal_loss, loss = self.alg.update()
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -168,6 +168,8 @@ class OnPolicyRunner:
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
+        self.writer.add_scalar('Loss/temporal_loss', locs['temporal_loss'], locs['it'])
+        self.writer.add_scalar('Loss/total_loss', locs['loss'], locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])

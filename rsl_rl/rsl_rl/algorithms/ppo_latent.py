@@ -35,6 +35,7 @@ import torch.optim as optim
 from rsl_rl.modules import ActorCriticLatent
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.modules import discriminator_ensemble
+from rsl_rl.modules.skill_coder import CASSIDiscriminator
 from rsl_rl.modules.temporal_gradient_coordinator import TemporalGradientCoordinator
 import numpy as np
 
@@ -119,13 +120,13 @@ class PPO_LAT:
         self.swing_trigger_vel = swing_trigger_vel
         self.full_stand_vel = full_stand_vel
 
-        # CASSI判别器
-        self.cassi_disc = CASSIDiscriminator(
-            state_dim=self.actor_critic.num_actor_obs,
-            action_dim=self.actor_critic.num_actions,
-            latent_dim=latent_dim
-        ).to(device)
-        self.cassi_optimizer = optim.Adam(self.cassi_disc.parameters(), lr=1e-4)
+        # # CASSI判别器
+        # self.cassi_disc = CASSIDiscriminator(
+        #     state_dim=self.actor_critic.num_actor_obs,
+        #     action_dim=self.actor_critic.num_actions,
+        #     latent_dim=latent_dim
+        # ).to(device)
+        # self.cassi_optimizer = optim.Adam(self.cassi_disc.parameters(), lr=1e-4)
 
         # 时序协调器
         self.temporal_coord = TemporalGradientCoordinator(
@@ -138,7 +139,7 @@ class PPO_LAT:
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, self.device)
 
     def test_mode(self):
-        self.actor_critic.test()
+        self.actor_critic.eval()
     
     def train_mode(self):
         self.actor_critic.train()
@@ -192,12 +193,12 @@ class PPO_LAT:
                 
        # 记录CASSI所需数据（会在process_env_step中使用下一状态）
         self._cassi_state = obs.clone()
-        self._cassi_action = actions.clone()
+        self._cassi_action = self.transition.actions.clone()
         self._cassi_z = z.clone()
 
-        return self.transition.actions, z
+        return self.transition.actions
     
-    def process_env_step(self, rewards, dones, infos, next_obs):
+    def process_env_step(self, rewards, dones, infos, next_obs=None):
         # env.step() 返回后，把奖励/终止标记补到当前 transition 上并写入 buffer。
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
@@ -207,10 +208,10 @@ class PPO_LAT:
             self.transition.rewards += self.gamma * torch.squeeze(self.transition.values * infos['time_outs'].unsqueeze(1).to(self.device), 1)
         
         # 存储CASSI数据
-        self.transition.cassi_state = self._cassi_state
-        self.transition.cassi_action = self._cassi_action
-        self.transition.cassi_next_state = next_obs.clone()
-        self.transition.cassi_z = self._cassi_z
+        # self.transition.cassi_state = self._cassi_state
+        # self.transition.cassi_action = self._cassi_action
+        # self.transition.cassi_next_state = next_obs.clone()
+        # self.transition.cassi_z = self._cassi_z
 
 
         # Record the transition
@@ -246,12 +247,6 @@ class PPO_LAT:
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
 
-                # 扩展batch数据（CASSI相关）
-                cassi_state_batch = batch[11] if len(batch) > 11 else None
-                cassi_action_batch = batch[12] if len(batch) > 12 else None
-                cassi_next_state_batch = batch[13] if len(batch) > 13 else None
-                cassi_z_batch = batch[14] if len(batch) > 14 else None
-
                 #sym loss
                 sym_loss = 0 
                 if self.sym_loss:
@@ -282,44 +277,6 @@ class PPO_LAT:
                         for param_group in self.optimizer.param_groups:
                             param_group['lr'] = self.learning_rate
 
-            # 获取当前潜码（用于时序损失）
-        z_mean_batch, _ = self.actor_critic.forward_latent(obs_batch)
-        z_batch = torch.tanh(z_mean_batch)
-
-            # CASSI损失
-        cassi_loss = 0
-        if cassi_state_batch is not None:
-                # 获取技能标签（基于潜码）
-                with torch.no_grad():
-                    skill_labels = self._get_skill_labels(cassi_z_batch)
-                cassi_loss = self.cassi_disc.cassi_loss(
-                    cassi_state_batch, cassi_action_batch, cassi_next_state_batch,
-                    cassi_z_batch, skill_labels
-                )
-
-            # 时序平滑损失
-        temporal_loss = 0
-            # 计算策略梯度的一个代理（使用surrogate loss的梯度）
-            # 此处我们直接对actor参数计算梯度并协调
-            # 为简化，我们只使用一次梯度计算
-        if self.temporal_coef > 0:
-                # 计算一个虚拟的policy loss用于梯度
-                ratio = torch.exp(actions_log_prob_batch - old_actions_log_prob_batch)
-                surrogate = -advantages_batch * ratio
-                surrogate_clipped = -advantages_batch * torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
-                policy_loss = torch.max(surrogate, surrogate_clipped).mean()
-                # 计算梯度（只对actor参数）
-                grads = torch.autograd.grad(policy_loss, self.actor_critic.actor.parameters(), retain_graph=True)
-                # 对每个技能类型分别处理（这里简化，直接使用平均）
-                # 实际可根据潜码值划分技能类型
-                for i, grad in enumerate(grads):
-                    if grad is not None:
-                        # 简单使用整体梯度
-                        temporal_loss += self.temporal_coord.compute_temporal_smoothness_loss(
-                            grad.detach(), 'transition', z_batch, self.prev_z, None
-                        )
-                self.prev_z = z_batch.detach()
-
 
 
                 # Surrogate loss
@@ -341,6 +298,21 @@ class PPO_LAT:
                 else:
                     value_loss = (returns_batch - value_batch).pow(2).mean()
 
+                temporal_loss = 0.0
+                if self.temporal_coef > 0:
+                  with torch.no_grad():
+                    z_mean_batch, _ = self.actor_critic.forward_latent(obs_batch)
+                    z_batch = torch.tanh(z_mean_batch)
+                if self.prev_z is not None:
+                    temporal_loss = self.temporal_coord.compute_temporal_smoothness_loss(
+                        z_batch.flatten() - self.prev_z.flatten(),
+                        'transition',
+                        z_batch,
+                        self.prev_z,
+                        None,
+                    )
+                self.prev_z = z_batch.detach()
+
                 # 总损失 = policy + value - entropy bonus + symmetry regularization
                 loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean() + self.sym_coef * sym_loss
 
@@ -356,6 +328,36 @@ class PPO_LAT:
                 if sym_loss:
                     mean_sym_loss += sym_loss.item()
 
+
+        # # CASSI损失
+        # cassi_loss = 0
+        # if cassi_state_batch is not None:
+        #         # 获取技能标签（基于潜码）
+        #         with torch.no_grad():
+        #             skill_labels = self._get_skill_labels(cassi_z_batch)
+        #         cassi_loss = self.cassi_disc.cassi_loss(
+        #             cassi_state_batch, cassi_action_batch, cassi_next_state_batch,
+        #             cassi_z_batch, skill_labels
+        #         )
+
+        # 时序平滑项当前只保留轻量状态统计，不再额外构建/保留第二份反向图。
+        # 原来的 torch.autograd.grad(..., retain_graph=True) 会在 PPO 反传之后再次追踪整张图，
+        # 显存开销很大，而且这部分损失目前并没有并入最终优化目标。
+        # temporal_loss = 0.0
+        # if self.temporal_coef > 0:
+        #     with torch.no_grad():
+        #         z_mean_batch, _ = self.actor_critic.forward_latent(obs_batch)
+        #         z_batch = torch.tanh(z_mean_batch)
+        #         if self.prev_z is not None:
+        #             temporal_loss = self.temporal_coord.compute_temporal_smoothness_loss(
+        #                 z_batch.flatten() - self.prev_z.flatten(),
+        #                 'transition',
+        #                 z_batch,
+        #                 self.prev_z,
+        #                 None,
+        #             )
+        #         self.prev_z = z_batch.detach()
+
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
@@ -366,7 +368,7 @@ class PPO_LAT:
         # 一个 rollout 的数据只使用一次，更新完成后清空缓存。
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss, mean_sym_loss
+        return mean_value_loss, mean_surrogate_loss, mean_sym_loss, temporal_loss, loss 
     
     def _get_skill_labels(self, z):
         """根据潜码值确定技能标签"""

@@ -44,12 +44,17 @@ class ActorCriticLatent(nn.Module):
                         critic_hidden_dims=[256, 256, 256],
                         activation='elu',
                         init_noise_std=1.0,
+                        latent_dim=16,
                         **kwargs):
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
         super(ActorCriticLatent, self).__init__()
 
         activation = get_activation(activation)
+        self.num_actor_obs = num_actor_obs
+        self.num_critic_obs = num_critic_obs
+        self.num_actions = num_actions
+        self.actor_hidden_dims = actor_hidden_dims
 
         mlp_input_dim_a = num_actor_obs
         mlp_input_dim_c = num_critic_obs
@@ -90,6 +95,7 @@ class ActorCriticLatent(nn.Module):
         # seems that we get better performance without init
         # self.init_memory_weights(self.memory_a, 0.001, 0.)
         # self.init_memory_weights(self.memory_c, 0.001, 0.)
+        self._build_latent_head(latent_dim)
 
     @staticmethod
     # not used at the moment
@@ -138,34 +144,22 @@ class ActorCriticLatent(nn.Module):
     # 新增：潜码生成头
     def _build_latent_head(self, latent_dim):
         """在actor特征后添加潜码输出头"""
-        if hasattr(self, 'actor'):
-            # 复用actor的特征提取层
-            self.latent_head = nn.Sequential(
-                nn.Linear(self.actor_hidden_dims[-1] if hasattr(self, 'actor_hidden_dims') else 128, 64),
-                nn.ELU(),
-                nn.Linear(64, latent_dim * 2)  # mean + log_std
-            )
-        else:
-            # 如果没有actor特征，直接构建
-            self.latent_head = nn.Sequential(
-                nn.Linear(self.num_actor_obs, 128),
-                nn.ELU(),
-                nn.Linear(128, 64),
-                nn.ELU(),
-                nn.Linear(64, latent_dim * 2)
-            )
+        self.latent_head = nn.Sequential(
+            nn.Linear(self.actor_hidden_dims[-1], 64),
+            nn.ELU(),
+            nn.Linear(64, latent_dim * 2)
+        )
         self.latent_dim = latent_dim
+
+    def _extract_features(self, obs):
+        features = obs
+        for module in list(self.actor.children())[:-1]:
+            features = module(features)
+        return features
 
     def forward_latent(self, obs):
         """生成潜码分布"""
-        # 如果存在actor，复用其特征
-        if hasattr(self, 'actor_features'):
-            features = self.actor_features(obs)
-        else:
-            # 简单处理：直接用actor网络的特征（需保证actor输出动作，此处提取中间层）
-            # 为了简化，我们假设actor是一个MLP，取倒数第二层输出
-            # 更严谨的做法是修改actor构建方式，这里为演示直接构建一个特征提取器
-            features = self._extract_features(obs)
+        features = self._extract_features(obs)
         latent_out = self.latent_head(features)
         mean, log_std = latent_out.chunk(2, dim=-1)
         std = log_std.exp().clamp(0.01, 1.0)
