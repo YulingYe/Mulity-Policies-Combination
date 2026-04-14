@@ -10,6 +10,7 @@ import torch
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
+from rsl_rl.datasets.motion_loader import MotionLoader
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
 from legged_gym.envs.GO2_Policyconnection.GO2_TrotConHandstand.GO2_TrotConHandstand_config import GO2_TrotConHandstand_Cfg, GO2_TrotConHandstand_PPO
@@ -44,6 +45,45 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         self.init_done = False
         self._parse_cfg(self.cfg)
         super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
+
+        # === MISSING WASABI / DISCRIMINATOR INIT: 必须放在 super().__init__() 之后 ===
+        # BaseTask 会在 super() 中初始化 self.device / self.num_envs；
+        # wasabi 相关模块依赖这两个成员，因此不能提前访问。
+        self.reference_motion_file = self.cfg.motion_loader.reference_motion_file
+        self.test_mode = self.cfg.motion_loader.test_mode
+        self.test_observation_dim = self.cfg.motion_loader.test_observation_dim
+        self.reference_observation_horizon = self.cfg.motion_loader.reference_observation_horizon
+        self.motion_loader = MotionLoader(
+            device=self.device,
+            motion_file=self.reference_motion_file,
+            corruption_level=self.cfg.motion_loader.corruption_level,
+            reference_observation_horizon=self.reference_observation_horizon,
+            test_mode=self.test_mode,
+            test_observation_dim=self.test_observation_dim,
+        )
+        self.reference_state_idx_dict = self.motion_loader.state_idx_dict
+        self.reference_full_dim = sum([ids[1] - ids[0] for ids in self.reference_state_idx_dict.values()])
+        self.reference_observation_dim = sum(
+            [ids[1] - ids[0] for state, ids in self.reference_state_idx_dict.items() if state not in ("base_pos", "base_quat")]
+        )
+        self.wasabi_states = torch.zeros(
+            self.num_envs, self.reference_full_dim, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.discriminator = None  # assigned in runner
+        self.wasabi_state_normalizer = None  # assigned in runner
+        self.wasabi_style_reward_normalizer = None  # assigned in runner
+        self.wasabi_observation_buf = torch.zeros(
+            self.num_envs,
+            self.reference_observation_horizon,
+            self.reference_observation_dim,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        # 初始化 next_wasabi_observations，避免首个 step 在 update_wasabi_observation_buf() 处访问未定义属性。
+        self.next_wasabi_observations = self.get_wasabi_observations()
+        self.wasabi_observation_buf[:, -1] = self.next_wasabi_observations
+
         if not self.headless:
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
@@ -135,6 +175,7 @@ class GO2_TrotConHandstand_Robot(BaseTask):
 
         # compute observations, rewards, resets, ...
         self.check_termination()
+        self.wasabi_record_states()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
@@ -143,7 +184,10 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+
+        self.update_wasabi_observation_buf()
         
+    
 
     def check_termination(self):
         """ Check if environments need to be reset
@@ -209,6 +253,42 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         for i in range(self.critic_history.maxlen):
             self.critic_history[i][env_ids] *= 0
     
+    def get_wasabi_observations(self):
+        if self.test_mode:
+            wasabi_obs = torch.zeros(self.num_envs, self.test_observation_dim, device=self.device, requires_grad=False)
+        else:
+            wasabi_obs = self.wasabi_states[:, self.motion_loader.observation_start_dim:].clone()
+        return wasabi_obs
+
+    def wasabi_record_states(self):
+        for key, value in self.reference_state_idx_dict.items():
+            if key == "base_pos":
+                self.wasabi_states[:, value[0]: value[1]] = self._get_base_pos()
+            elif key == "feet_pos":
+                self.wasabi_states[:, value[0]: value[1]] = self._get_feet_pos()
+            else:
+                self.wasabi_states[:, value[0]: value[1]] = getattr(self, key)
+
+    def _get_base_pos(self):
+        return self.root_states[:, :3] - self.env_origins[:, :3]
+    
+    def _get_dof_vel(self):
+        return self.dof_vel
+    
+    def _get_dof_acc(self):
+        return self.dof_vel - self.last_dof_vel 
+
+    def _get_feet_pos(self):
+        feet_pos_global = self.rigid_body_pos[:, self.feet_indices, :3]
+        feet_pos_local = torch.zeros_like(feet_pos_global)
+        for i in range(len(self.feet_indices)):
+            feet_pos_local[:, i] = quat_rotate_inverse(
+                self.base_quat,
+                feet_pos_global[:, i]
+            )
+        return feet_pos_local.flatten(1, 2)    
+
+
     def compute_reward(self):
         """ Compute rewards
             Calls each reward function which had a non-zero scale (processed in self._prepare_reward_function())
@@ -220,6 +300,26 @@ class GO2_TrotConHandstand_Robot(BaseTask):
             rew = self.reward_functions[i]() * self.reward_scales[name]
             self.rew_buf += rew
             self.episode_sums[name] += rew
+
+        # === MISSING WASABI / DISCRIMINATOR REWARD: 与 go2_wasabi.py 对齐补齐 ===
+        if self.discriminator is not None and self.wasabi_state_normalizer is not None:
+            self.next_wasabi_observations = self.get_wasabi_observations()
+            wasabi_observation_buf = torch.cat(
+                (self.wasabi_observation_buf[:, 1:], self.next_wasabi_observations.unsqueeze(1)),
+                dim=1,
+            )
+            task_rew = self.rew_buf.clone()
+            total_rew, style_rew = self.discriminator.predict_wasabi_reward(
+                wasabi_observation_buf,
+                task_rew,
+                self.dt,
+                self.wasabi_state_normalizer,
+                self.wasabi_style_reward_normalizer,
+            )
+            self.episode_sums["task"] += task_rew
+            self.episode_sums["style"] += style_rew
+            self.rew_buf = total_rew
+
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
         # add termination reward after clipping
@@ -241,6 +341,14 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         stance_mask[:, 1] = phase>0.5
         return stance_mask
     
+    def update_wasabi_observation_buf(self):
+        self.wasabi_observation_buf[:, :-1] = self.wasabi_observation_buf[:, 1:].clone()
+        self.wasabi_observation_buf[:, -1] = self.next_wasabi_observations.clone()
+
+    def get_wasabi_observation_buf(self):
+        return self.wasabi_observation_buf.clone()
+
+
     def compute_observations(self):
 
         phase = self._get_phase()
@@ -658,7 +766,8 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         self.stand_command=torch.zeros((self.num_envs, 1), dtype=torch.float, device=self.device)
-
+        self.base_height = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)        
+        
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.descire_joint_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False) # handstand
@@ -723,6 +832,9 @@ class GO2_TrotConHandstand_Robot(BaseTask):
         # reward episode sums
         self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
                              for name in self.reward_scales.keys()}
+        # === MISSING WASABI / DISCRIMINATOR LOGGING: 补齐 style/task 统计 ===
+        self.episode_sums["task"] = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.episode_sums["style"] = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
 
     def _create_ground_plane(self):
         """ Adds a ground plane to the simulation, sets friction and restitution based on the cfg.

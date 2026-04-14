@@ -1,3 +1,4 @@
+from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
@@ -191,6 +192,14 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
         base_height_target = 0.52#0.25
         max_contact_force = 200. # forces above this value are penalized
         cycle_time=0.5
+    
+    class motion_loader:
+        reference_motion_file = LEGGED_GYM_ROOT_DIR + "/resources/robots/go2/datasets/reference_handstand.pt"
+        corruption_level = 0.0
+        reference_observation_horizon = 2
+        test_mode = False
+        test_observation_dim = None # observation_dim of reference motion
+
 
     class normalization:
         class obs_scales:

@@ -34,7 +34,6 @@ import torch.optim as optim
 
 from rsl_rl.modules import ActorCriticLatent
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.modules import discriminator_ensemble
 from rsl_rl.modules.skill_coder import CASSIDiscriminator
 from rsl_rl.modules.temporal_gradient_coordinator import TemporalGradientCoordinator
 import numpy as np

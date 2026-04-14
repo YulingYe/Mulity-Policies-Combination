@@ -57,6 +57,7 @@ def play(args):
     env.commands[:, 0]=1.0
     env.commands[:, 1]=0.
     env.commands[:, 2]=0.
+    base_height = torch.tensor([0.6],device="cuda:0")
     resember = torch.tensor(np.zeros((41)),device="cuda:0")
     for i in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
@@ -89,23 +90,40 @@ def play(args):
                 }
             )
 
+            # 前 200 步通常仍处于初始化或过渡阶段，这里跳过，只保留后续更稳定的参考状态。
             if i > 199:
+                # 将单步机器人状态按固定顺序拼成 40 维向量，供后续作为参考轨迹数据使用。
                 temp_resember = torch.cat((env.root_states[0, 0:3], #3
                                       env.root_states[0, 3:7],    #4
                                       env.base_lin_vel[0, :],    #3
                                       env.base_ang_vel[0, :],    #3
                                       env.projected_gravity[0, :], #3
+                                      base_height, #1
                                       env.dof_pos[0, :],  #12
                                       env.dof_vel[0, :],),0)  #12
+            # 第一个有效状态直接作为轨迹起点初始化。
             if i == 200:
                 resember = temp_resember
+            # 后续每一步都继续拼接到一维张量中，最终再 reshape 为 [T, 40]。
             if i > 200:
                 resember = torch.cat((resember, temp_resember),0)
         elif i==stop_state_log:
             logger.plot_states()
-            final_resember = resember.view(200,40)
+            # 这里约定一共收集 200 帧，每帧 40 维状态，因此恢复成 [200, 41] 便于检查。
+            general_resember = resember.view(200,41)
+            
+            
+            final_resember = torch.tensor(np.zeros((200,41)),device="cuda:0")
+            for j in tqdm(range(6000)):
+               if j == 0:
+                 final_resember = general_resember
+               else:
+                 final_resember = torch.cat((final_resember, general_resember),0)
+            final_resember = final_resember.view(6000,200,41)
             print("final_resember-----",final_resember.shape)
-            torch.save(resember, 'final_resember.pt')
+
+            # 将采样得到的参考轨迹保存到磁盘，供 motion loader 或后续模仿学习读取。
+            torch.save(final_resember, 'reference_handstand.pt')
         if  0 < i < stop_rew_log:
             if infos["episode"]:
                 num_episodes = torch.sum(env.reset_buf).item()
