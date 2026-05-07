@@ -34,14 +34,21 @@ import torch.optim as optim
 
 from rsl_rl.modules import ActorCriticLatent
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.modules.skill_coder import CASSIDiscriminator
+from rsl_rl.modules.discriminator import Discriminator
+from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.modules.temporal_gradient_coordinator import TemporalGradientCoordinator
 import numpy as np
 
 class PPO_LAT:
     actor_critic: ActorCriticLatent
+    discriminator: Discriminator
+
     def __init__(self,
                  actor_critic,
+                 discriminator,
+                 wasabi_expert_data,
+                 wasabi_state_normalizer,
+                 wasabi_style_reward_normalizer,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -60,12 +67,23 @@ class PPO_LAT:
                  act_permutation = None,
                  frame_stack = 15,
                  sym_coef = 1.0,
+
+                 discriminator_learning_rate=0.000025,
+                 discriminator_momentum=0.9,
+                 discriminator_weight_decay=0.0005,
+                 discriminator_gradient_penalty_coef=5,
+                 discriminator_loss_function="MSELoss", # MSELoss
+                 discriminator_num_mini_batches=10,
+                 wasabi_replay_buffer_size=100000,
+
                  # 新增参数
                  latent_dim=16,
                  cassi_coef=0.1,
                  temporal_coef=0.05,
                  swing_trigger_vel=0.8,
                  full_stand_vel=0.3
+
+
                  ):
         # PPO_LAT 在标准 PPO 基础上额外支持：
         # 1. 对称性约束（symmetry loss）
@@ -111,6 +129,34 @@ class PPO_LAT:
             self.obs_perm_mat = torch.zeros((len(obs_permutation_stack), len(obs_permutation_stack))).cuda()
             for i, perm in enumerate(obs_permutation_stack):
                 self.obs_perm_mat[int(abs(perm))][i] = np.sign(perm)  
+        
+        # Discriminator components
+        self.discriminator = discriminator
+        self.discriminator.to(self.device)
+        self.wasabi_policy_data = ReplayBuffer(discriminator.observation_dim, discriminator.observation_horizon, wasabi_replay_buffer_size, device) #wasabi策略数据
+        self.wasabi_expert_data = wasabi_expert_data #wasabi参考数据
+        self.wasabi_state_normalizer = wasabi_state_normalizer #wasabi状态规范化
+        self.wasabi_style_reward_normalizer = wasabi_style_reward_normalizer #wasabi风格规范化
+
+        # Discriminator parameters
+        self.discriminator_learning_rate = discriminator_learning_rate
+        self.discriminator_momentum = discriminator_momentum
+        self.discriminator_weight_decay = discriminator_weight_decay
+        self.discriminator_gradient_penalty_coef = discriminator_gradient_penalty_coef
+        self.discriminator_loss_function = discriminator_loss_function
+        self.discriminator_num_mini_batches = discriminator_num_mini_batches
+
+        if self.discriminator_loss_function == "WassersteinLoss":
+            discriminator_optimizer = optim.RMSprop
+        else:
+            discriminator_optimizer = optim.SGD
+        self.discriminator_optimizer = discriminator_optimizer(
+                                                    self.discriminator.parameters(),
+                                                    lr=self.discriminator_learning_rate,
+                                                    momentum=self.discriminator_momentum,
+                                                    weight_decay=self.discriminator_weight_decay,
+                                                )
+
 
         # 新增组件
         self.latent_dim = latent_dim
@@ -143,7 +189,7 @@ class PPO_LAT:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, critic_obs, target_velocity=None, swing_command=None):
+    def act(self, obs, critic_obs, wasabi_observation_buf, target_velocity=None, swing_command=None):
         # 采样阶段：
         # 1. 用 actor 生成动作
         # 2. 用 critic 估计 value
@@ -180,6 +226,7 @@ class PPO_LAT:
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = critic_obs
+        self.wasabi_observation_buf = wasabi_observation_buf.clone()
 
 
         # 扩展存储潜码相关信息
@@ -197,7 +244,7 @@ class PPO_LAT:
 
         return self.transition.actions
     
-    def process_env_step(self, rewards, dones, infos, next_obs=None):
+    def process_env_step(self, rewards, dones, infos, wasabi_obs, next_obs=None):
         # env.step() 返回后，把奖励/终止标记补到当前 transition 上并写入 buffer。
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
@@ -215,6 +262,8 @@ class PPO_LAT:
 
         # Record the transition
         self.storage.add_transitions(self.transition)
+        wasabi_observation_buf = torch.cat((self.wasabi_observation_buf[:, 1:], wasabi_obs.unsqueeze(1)), dim=1)
+        self.wasabi_policy_data.insert(wasabi_observation_buf)
         self.transition.clear()
         self.actor_critic.reset(dones)
 
@@ -230,6 +279,11 @@ class PPO_LAT:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_sym_loss = 0
+        # wasabi损失
+        mean_wasabi_loss = 0
+        mean_grad_pen_loss = 0
+        mean_policy_pred = 0
+        mean_expert_pred = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -297,23 +351,38 @@ class PPO_LAT:
                 else:
                     value_loss = (returns_batch - value_batch).pow(2).mean()
 
+                # 时序平滑损失初始化。
+                # 当前任务已经加入运动模仿，TemporalGradientCoordinator 只用于 handstand 策略训练：
+                # 从四足站立状态逐步过渡到 handstand，不再处理 trot 技能切换。
                 temporal_loss = 0.0
                 if self.temporal_coef > 0:
+                  # 这里只把潜变量 z 作为“状态变化信号”交给时序协调器评估，
+                  # 不希望 temporal_loss 反向影响 forward_latent 本身的计算图，因此使用 no_grad。
                   with torch.no_grad():
+                    # forward_latent 返回当前 mini-batch 观测对应的潜变量分布参数。
+                    # 这里使用均值 z_mean_batch，而不是随机采样的 z，避免采样噪声干扰时序平滑判断。
                     z_mean_batch, _ = self.actor_critic.forward_latent(obs_batch)
+                    # tanh 将潜变量压到 [-1, 1]，与 actor 使用潜码时的边界范围保持一致。
                     z_batch = torch.tanh(z_mean_batch)
                 if self.prev_z is not None:
+                    # 使用当前 batch 潜码与上一 batch 潜码的差值，近似表示“潜空间时序梯度”。
+                    # 虽然这里仍传入旧字符串 'transition'，但 TemporalGradientCoordinator 内部会把它映射为
+                    # handstand_transition，即“四足站立 -> handstand”的过渡阶段。
                     temporal_loss = self.temporal_coord.compute_temporal_smoothness_loss(
+                        # flatten 后计算整体潜码变化方向，便于与历史方向做 dot/cosine 风格比较。
                         z_batch.flatten() - self.prev_z.flatten(),
                         'transition',
+                        # 当前潜码和上一批潜码用于计算潜码跳变幅度，防止过渡过程突然切换。
                         z_batch,
                         self.prev_z,
+                        # 当前没有向协调器传入速度信息，因此暂时不启用过渡能量骤降惩罚。
                         None,
                     )
+                # 保存当前潜码，供下一次 PPO mini-batch 更新时作为时序参考。
                 self.prev_z = z_batch.detach()
 
                 # 总损失 = policy + value - entropy bonus + symmetry regularization
-                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean() + self.sym_coef * sym_loss
+                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean() + self.sym_coef * sym_loss + temporal_loss
 
 
                 # Gradient step
@@ -326,6 +395,68 @@ class PPO_LAT:
                 mean_surrogate_loss += surrogate_loss.item()
                 if sym_loss:
                     mean_sym_loss += sym_loss.item()
+
+        # Discriminator update
+        wasabi_policy_generator = self.wasabi_policy_data.feed_forward_generator(
+            self.discriminator_num_mini_batches,
+            self.storage.num_envs * self.storage.num_transitions_per_env // self.discriminator_num_mini_batches) #策略数据生成
+        wasabi_expert_generator = self.wasabi_expert_data.feed_forward_generator(
+            self.discriminator_num_mini_batches,
+            self.storage.num_envs * self.storage.num_transitions_per_env // self.discriminator_num_mini_batches) #专家数据生成
+
+        for sample_wasabi_policy, sample_wasabi_expert in zip(wasabi_policy_generator, wasabi_expert_generator):
+
+            # Discriminator loss
+            policy_state_buf = torch.zeros_like(sample_wasabi_policy)
+            expert_state_buf = torch.zeros_like(sample_wasabi_expert)
+            if self.wasabi_state_normalizer is not None:
+                for i in range(self.discriminator.observation_horizon):
+                    with torch.no_grad():
+                        policy_state_buf[:, i] = self.wasabi_state_normalizer.normalize(sample_wasabi_policy[:, i])
+                        expert_state_buf[:, i] = self.wasabi_state_normalizer.normalize(sample_wasabi_expert[:, i])
+            policy_d = self.discriminator(policy_state_buf.flatten(1, 2))
+            expert_d = self.discriminator(expert_state_buf.flatten(1, 2))
+            # 判别器损失函数选择
+            if self.discriminator_loss_function == "BCEWithLogitsLoss":
+                expert_loss = torch.nn.BCEWithLogitsLoss()(expert_d, torch.ones_like(expert_d))
+                policy_loss = torch.nn.BCEWithLogitsLoss()(policy_d, torch.zeros_like(policy_d))
+            elif self.discriminator_loss_function == "MSELoss":
+                expert_loss = torch.nn.MSELoss()(expert_d, torch.ones(expert_d.size(), device=self.device))
+                policy_loss = torch.nn.MSELoss()(policy_d, -1 * torch.ones(policy_d.size(), device=self.device))
+            elif self.discriminator_loss_function == "WassersteinLoss":
+                expert_loss = -expert_d.mean()
+                policy_loss = policy_d.mean()
+            else:
+                raise ValueError("Unexpected loss function specified")
+            wasabi_loss = 0.5 * (expert_loss + policy_loss)
+            grad_pen_loss = self.discriminator.compute_grad_pen(sample_wasabi_expert,
+                                                                lambda_=self.discriminator_gradient_penalty_coef) #计算技能判别梯度
+
+            # Gradient step
+            #discriminator_loss = wasabi_loss + grad_pen_loss
+            discriminator_loss = wasabi_loss
+            self.discriminator_optimizer.zero_grad()
+            discriminator_loss.backward()
+            self.discriminator_optimizer.step()
+
+            if self.wasabi_state_normalizer is not None:
+                self.wasabi_state_normalizer.update(sample_wasabi_policy[:, 0])
+                self.wasabi_state_normalizer.update(sample_wasabi_expert[:, 0])
+
+            mean_wasabi_loss += wasabi_loss.item()
+            mean_grad_pen_loss += grad_pen_loss.item()
+            mean_policy_pred += policy_d.mean().item()
+            mean_expert_pred += expert_d.mean().item()
+
+        policy_num_updates = self.num_learning_epochs * self.num_mini_batches
+        mean_value_loss /= policy_num_updates
+        mean_surrogate_loss /= policy_num_updates
+
+        discriminator_num_updates = self.discriminator_num_mini_batches
+        mean_wasabi_loss /= discriminator_num_updates
+        mean_grad_pen_loss /= discriminator_num_updates
+        mean_policy_pred /= discriminator_num_updates
+        mean_expert_pred /= discriminator_num_updates
 
 
         # # CASSI损失
@@ -367,7 +498,7 @@ class PPO_LAT:
         # 一个 rollout 的数据只使用一次，更新完成后清空缓存。
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss, mean_sym_loss, temporal_loss, loss 
+        return mean_value_loss, mean_surrogate_loss, mean_sym_loss, mean_wasabi_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, temporal_loss, loss 
     
     def _get_skill_labels(self, z):
         """根据潜码值确定技能标签"""

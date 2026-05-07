@@ -12,7 +12,7 @@ from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configH import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configT import GO2_TrottoHandstand_Cfg, GO2_TrottoHandstand_PPO
 
 
 def get_euler_xyz_tensor(quat):
@@ -924,145 +924,145 @@ class GO2_TrottoHandstand_Robot(BaseTask):
 
     #------------trot reward functions----------------
 
-    # def _reward_trot(self):
-    #     """
-    #     Calculates a reward based on the number of feet contacts aligning with the gait phase. 
-    #     Rewards or penalizes depending on whether the foot contact matches the expected gait phase.
-    #     """
-    #     contact = self.contact_forces[:, self.feet_indices, 2] > 5.
+    def _reward_trot(self):
+        """
+        Calculates a reward based on the number of feet contacts aligning with the gait phase. 
+        Rewards or penalizes depending on whether the foot contact matches the expected gait phase.
+        """
+        contact = self.contact_forces[:, self.feet_indices, 2] > 5.
 
-    #     stance_mask = self._get_gait_phase()
-    #     TROT = (contact[:,0] == contact[:,3]) & \
-    #         (contact[:,1] == contact[:,2]) & \
-    #         (contact[:,0] == stance_mask[:,0]) & \
-    #         (contact[:,1] == stance_mask[:,1])
-    #     # print( JUMP.to(torch.float32).mean())
-    #     # print(self.feet_indices)['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot'] tensor([ 6, 12, 20, 26], device='cuda:0')
-    #     self.trot=TROT.to(torch.float32).mean()
-    #     # print(stance_mask[0,0],stance_mask[0,1],phase)
-    #     return TROT*(torch.norm(self.commands[:, :2], dim=1) > 0.2)
+        stance_mask = self._get_gait_phase()
+        TROT = (contact[:,0] == contact[:,3]) & \
+            (contact[:,1] == contact[:,2]) & \
+            (contact[:,0] == stance_mask[:,0]) & \
+            (contact[:,1] == stance_mask[:,1])
+        # print( JUMP.to(torch.float32).mean())
+        # print(self.feet_indices)['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot'] tensor([ 6, 12, 20, 26], device='cuda:0')
+        self.trot=TROT.to(torch.float32).mean()
+        # print(stance_mask[0,0],stance_mask[0,1],phase)
+        return TROT*(torch.norm(self.commands[:, :2], dim=1) > 0.2)
 
-    # def _reward_default_hip_pos(self):
-    #     """
-    #     Calculates the reward for keeping joint positions close to default positions, with a focus 
-    #     on penalizing deviation in yaw and roll directions. Excludes yaw and roll from the main penalty.
-    #     """
-    #     joint_diff = torch.abs(self.dof_pos[:,0])+torch.abs(self.dof_pos[:,3])+torch.abs(self.dof_pos[:,6])+torch.abs(self.dof_pos[:,9])
-    #     # print("!!!!!1",torch.exp(-joint_diff * 4).shape)
-    #     return joint_diff  
+    def _reward_default_hip_pos(self):
+        """
+        Calculates the reward for keeping joint positions close to default positions, with a focus 
+        on penalizing deviation in yaw and roll directions. Excludes yaw and roll from the main penalty.
+        """
+        joint_diff = torch.abs(self.dof_pos[:,0])+torch.abs(self.dof_pos[:,3])+torch.abs(self.dof_pos[:,6])+torch.abs(self.dof_pos[:,9])
+        # print("!!!!!1",torch.exp(-joint_diff * 4).shape)
+        return joint_diff  
 
-    # def _reward_feet_clearance(self):#鼓励抬脚高度
-    #     """
-    #     Calculates reward based on the clearance of the swing leg from the ground during movement.
-    #     Encourages appropriate lift of the feet during the swing phase of the gait.
-    #     """
-    #     # Compute feet contact mask
-    #     self.feet_height =self.rigid_state[:, self.feet_indices, 2] - 0.02
-    #     left_feet_height=self.feet_height[:,::3]
-    #     right_feet_height=self.feet_height[:,1:3]
-    #     # Compute swing mask
-    #     swing_mask = (1 - self._get_gait_phase())
-    #     phase=self._get_phase()
-    #     # feet height should larger than target feet height at the peak
-    #     target_height=(torch.abs(torch.sin(2*torch.pi*phase))*self.cfg.rewards.target_foot_height).unsqueeze(1).repeat(1,2)
-    #     # print(left_feet_height.shape,right_feet_height.shape,target_height.shape)
-    #     rew=torch.exp(-torch.sum(torch.abs(left_feet_height-target_height)*swing_mask[:,0].unsqueeze(1).repeat(1,2),dim=1)*10)
-    #     # print(rew[0],torch.sum(torch.abs(left_feet_height-target_height),dim=1)[0])
-    #     rew+=torch.exp(-torch.sum(torch.abs(right_feet_height-target_height)*swing_mask[:,1].unsqueeze(1).repeat(1,2),dim=1)*10)
-    #     return rew*(torch.norm(self.commands[:, :2], dim=1) > 0.2)
+    def _reward_feet_clearance(self):#鼓励抬脚高度
+        """
+        Calculates reward based on the clearance of the swing leg from the ground during movement.
+        Encourages appropriate lift of the feet during the swing phase of the gait.
+        """
+        # Compute feet contact mask
+        self.feet_height =self.rigid_state[:, self.feet_indices, 2] - 0.02
+        left_feet_height=self.feet_height[:,::3]
+        right_feet_height=self.feet_height[:,1:3]
+        # Compute swing mask
+        swing_mask = (1 - self._get_gait_phase())
+        phase=self._get_phase()
+        # feet height should larger than target feet height at the peak
+        target_height=(torch.abs(torch.sin(2*torch.pi*phase))*self.cfg.rewards.target_foot_height).unsqueeze(1).repeat(1,2)
+        # print(left_feet_height.shape,right_feet_height.shape,target_height.shape)
+        rew=torch.exp(-torch.sum(torch.abs(left_feet_height-target_height)*swing_mask[:,0].unsqueeze(1).repeat(1,2),dim=1)*10)
+        # print(rew[0],torch.sum(torch.abs(left_feet_height-target_height),dim=1)[0])
+        rew+=torch.exp(-torch.sum(torch.abs(right_feet_height-target_height)*swing_mask[:,1].unsqueeze(1).repeat(1,2),dim=1)*10)
+        return rew*(torch.norm(self.commands[:, :2], dim=1) > 0.2)
     
-    # def _reward_lin_vel_z(self):
-    #     return torch.exp(-torch.abs(self.base_lin_vel[:, 2])*5)
+    def _reward_lin_vel_z(self):
+        return torch.exp(-torch.abs(self.base_lin_vel[:, 2])*5)
     
-    # def _reward_ang_vel_xy(self):
-    #     # Penalize xy axes base angular velocity
-    #     return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+    def _reward_ang_vel_xy(self):
+        # Penalize xy axes base angular velocity
+        return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
     
-    # def _reward_orientation(self):
+    def _reward_orientation(self):
 
-    #     return torch.exp(-torch.norm(self.projected_gravity[:, :2], dim=1)*10)
+        return torch.exp(-torch.norm(self.projected_gravity[:, :2], dim=1)*10)
 
-    # def _reward_base_height(self):
-    #     # Penalize base height away from target
-    #     base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) , dim=1)
+    def _reward_base_height(self):
+        # Penalize base height away from target
+        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) , dim=1)
 
-    #     return torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)
+        return torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)
     
-    # def _reward_torques(self):
-    #     # Penalize torques
-    #     return torch.sum(torch.square(self.torques), dim=1)
+    def _reward_torques(self):
+        # Penalize torques
+        return torch.sum(torch.square(self.torques), dim=1)
 
-    # def _reward_dof_vel(self):
-    #     # Penalize dof velocities
-    #     return torch.sum(torch.square(self.dof_vel), dim=1)
+    def _reward_dof_vel(self):
+        # Penalize dof velocities
+        return torch.sum(torch.square(self.dof_vel), dim=1)
     
-    # def _reward_dof_acc(self):
-    #     # Penalize dof accelerations
-    #     return torch.sum(torch.square((self.last_dof_vel - self.dof_vel) / self.dt), dim=1)
+    def _reward_dof_acc(self):
+        # Penalize dof accelerations
+        return torch.sum(torch.square((self.last_dof_vel - self.dof_vel) / self.dt), dim=1)
     
-    # def _reward_action_rate(self):
-    #     # Penalize changes in actions
-    #     return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
-    # def _reward_collision(self):
-    #     # Penalize collisions on selected bodies
-    #     return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+    def _reward_action_rate(self):
+        # Penalize changes in actions
+        return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+    def _reward_collision(self):
+        # Penalize collisions on selected bodies
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
     
-    # def _reward_termination(self):
-    #     # Terminal reward / penalty
-    #     return self.reset_buf * ~self.time_out_buf
+    def _reward_termination(self):
+        # Terminal reward / penalty
+        return self.reset_buf * ~self.time_out_buf
     
-    # def _reward_dof_vel_limits(self):
-    #     # Penalize dof velocities too close to the limit
-    #     # clip to max error = 1 rad/s per joint to avoid huge penalties
-    #     return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
+    def _reward_dof_vel_limits(self):
+        # Penalize dof velocities too close to the limit
+        # clip to max error = 1 rad/s per joint to avoid huge penalties
+        return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
 
-    # def _reward_tracking_lin_vel(self):
-    #     # Tracking of linear velocity commands (xy axes)
-    #     lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
-    #     return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)*(self.trot>0.78)
+    def _reward_tracking_lin_vel(self):
+        # Tracking of linear velocity commands (xy axes)
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)*(self.trot>0.78)
     
-    # def _reward_tracking_ang_vel(self):
-    #     # Tracking of angular velocity commands (yaw) 
-    #     ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
-    #     return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)*(self.trot>0.78)
+    def _reward_tracking_ang_vel(self):
+        # Tracking of angular velocity commands (yaw) 
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)*(self.trot>0.78)
 
-    # def _reward_stand_still(self):
-    #     # Penalize motion at zero commands
-    #     return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
+    def _reward_stand_still(self):
+        # Penalize motion at zero commands
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
-    # def _reward_feet_contact_forces(self):
-    #     # penalize high contact forces
-    #     return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    def _reward_feet_contact_forces(self):
+        # penalize high contact forces
+        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
     
-    # def _reward_handstand_feet_on_air(self):
-    #     """
-    #     脚部在空奖励：
-    #     1. 使用 self.contact_forces 判断足部是否接触地面（通过预先设置的阈值）。
-    #     2. 如果所有足部都没有接触地面，则奖励1，否则奖励为0（或取平均）。
-    #     """
+    def _reward_handstand_feet_on_air(self):
+        """
+        脚部在空奖励：
+        1. 使用 self.contact_forces 判断足部是否接触地面（通过预先设置的阈值）。
+        2. 如果所有足部都没有接触地面，则奖励1，否则奖励为0（或取平均）。
+        """
 
-    #     # contact_forces: shape = (num_envs, num_bodies, 3)
-    #     contact = torch.norm(self.contact_forces[:, self.feet_name_reward_indices , :], dim=-1) > 1.0
-    #     # 如果所有足部均未接触地面，reward = 1；也可以使用 mean 得到部分奖励
-    #     reward = (~contact).float().prod(dim=1)
-    #     # print(reward)
-    #     return reward
-    #     # return 0
+        # contact_forces: shape = (num_envs, num_bodies, 3)
+        contact = torch.norm(self.contact_forces[:, self.feet_name_reward_indices , :], dim=-1) > 1.0
+        # 如果所有足部均未接触地面，reward = 1；也可以使用 mean 得到部分奖励
+        reward = (~contact).float().prod(dim=1)
+        # print(reward)
+        return reward
+        # return 0
     
-    # def _reward_handstand_orientation(self):
-    #     """
-    #     姿态奖励：
-    #     1. 使用 self.projected_gravity（机器人基座坐标系下的重力投影）来评估姿态。
-    #     2. 目标重力方向通过配置传入（例如 [1, 0, 0] 表示目标为竖直向上）。
-    #     3. 对比当前和目标重力方向的 L2 距离，偏差越大惩罚越大。
-    #     """
-    #     # self.rew_hanstand=torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
+    def _reward_handstand_orientation(self):
+        """
+        姿态奖励：
+        1. 使用 self.projected_gravity（机器人基座坐标系下的重力投影）来评估姿态。
+        2. 目标重力方向通过配置传入（例如 [1, 0, 0] 表示目标为竖直向上）。
+        3. 对比当前和目标重力方向的 L2 距离，偏差越大惩罚越大。
+        """
+        # self.rew_hanstand=torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
     
-    #     return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
+        return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
     
-    # def _reward_default_pos(self):
-    #     # Penalize motion at zero commands
-    #     return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+    def _reward_default_pos(self):
+        # Penalize motion at zero commands
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
     
 
 
@@ -1886,120 +1886,120 @@ class GO2_TrottoHandstand_Robot(BaseTask):
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
 
     #------------handstand reward functions----------------
-    def _reward_lin_vel_z(self):
-        # Penalize z axis base linear velocity
-        return torch.exp(-torch.abs(self.base_lin_vel[:, 0])*10)
+    # def _reward_lin_vel_z(self):
+    #     # Penalize z axis base linear velocity
+    #     return torch.exp(-torch.abs(self.base_lin_vel[:, 0])*10)
     
-    def _reward_ang_vel_xy(self):
-        # Penalize xy axes base angular velocity
-        # print("!!!!!!_reward_ang_vel_xy",torch.mean(torch.norm(torch.abs(self.base_ang_vel[:, :2]), dim=1)))
-        return torch.exp(-torch.norm(torch.abs(self.base_ang_vel[:, 1:3]), dim=1))
+    # def _reward_ang_vel_xy(self):
+    #     # Penalize xy axes base angular velocity
+    #     # print("!!!!!!_reward_ang_vel_xy",torch.mean(torch.norm(torch.abs(self.base_ang_vel[:, :2]), dim=1)))
+    #     return torch.exp(-torch.norm(torch.abs(self.base_ang_vel[:, 1:3]), dim=1))
 
-    def _reward_base_height(self):
-        # Penalize base height away from target
-        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        # print("!!!!!!_reward_base_height",torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)))
-        self.rew_hanstand=torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10))
-        return torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)
+    # def _reward_base_height(self):
+    #     # Penalize base height away from target
+    #     base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
+    #     # print("!!!!!!_reward_base_height",torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)))
+    #     self.rew_hanstand=torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10))
+    #     return torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)
 
-    def _reward_torques(self):
-        # Penalize torques
-        return torch.sum(torch.abs(self.torques), dim=1)
+    # def _reward_torques(self):
+    #     # Penalize torques
+    #     return torch.sum(torch.abs(self.torques), dim=1)
 
-    def _reward_dof_vel(self):
-        # Penalize dof velocities
-        return torch.sum(torch.square(self.dof_vel), dim=1)
+    # def _reward_dof_vel(self):
+    #     # Penalize dof velocities
+    #     return torch.sum(torch.square(self.dof_vel), dim=1)
     
-    def _reward_dof_acc(self):
-        # Penalize dof accelerations
-        return torch.sum(torch.square((self.last_dof_vel - self.dof_vel)), dim=1)
+    # def _reward_dof_acc(self):
+    #     # Penalize dof accelerations
+    #     return torch.sum(torch.square((self.last_dof_vel - self.dof_vel)), dim=1)
     
-    def _reward_action_rate(self):
-        # Penalize changes in actions
-        # print("!!!!!!11",torch.mean(torch.sum(torch.square(self.last_actions - self.actions), dim=1)))
-        return  torch.sum(torch.square(self.last_actions - self.actions), dim=1)
-
-    
-    def _reward_collision(self):
-        # Penalize collisions on selected bodies
-        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
-    
-    def _reward_termination(self):
-        # Terminal reward / penalty
-        return self.reset_buf * ~self.time_out_buf
-    
-    def _reward_dof_pos_limits(self):
-        # Penalize dof positions too close to the limit
-        out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
-        out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
-        return torch.sum(out_of_limits, dim=1)
-
-    def _reward_dof_vel_limits(self):
-        # Penalize dof velocities too close to the limit
-        # clip to max error = 1 rad/s per joint to avoid huge penalties
-        return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
-
-    def _reward_torque_limits(self):
-        # penalize torques too close to the limit
-        return torch.sum((torch.abs(self.torques) - self.torque_limits*self.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
-
-    def _reward_tracking_lin_vel(self):
-        # Tracking of linear velocity commands (xy axes)
-        # lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
-        x_error = torch.square(self.commands[:, 0] + self.base_lin_vel[:, 2])#站立起来的话，本体的x轴对应世界系的z，本体z轴对应世界系的-x
-        y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
-        # print(torch.mean(self.rew_hanstand),self.rew_hanstand.shape)
-        return torch.exp(-(y_error+x_error)/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
-    
-    def _reward_tracking_ang_vel(self):
-        # Tracking of angular velocity commands (yaw) 
-        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 0])
-        # print(torch.mean(self.episode_sums["handstand_orientation"]))
-        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
+    # def _reward_action_rate(self):
+    #     # Penalize changes in actions
+    #     # print("!!!!!!11",torch.mean(torch.sum(torch.square(self.last_actions - self.actions), dim=1)))
+    #     return  torch.sum(torch.square(self.last_actions - self.actions), dim=1)
 
     
-    def _reward_default_pos(self):
-        # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.descire_joint_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+    # def _reward_collision(self):
+    #     # Penalize collisions on selected bodies
+    #     return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+    
+    # def _reward_termination(self):
+    #     # Terminal reward / penalty
+    #     return self.reset_buf * ~self.time_out_buf
+    
+    # def _reward_dof_pos_limits(self):
+    #     # Penalize dof positions too close to the limit
+    #     out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
+    #     out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
+    #     return torch.sum(out_of_limits, dim=1)
+
+    # def _reward_dof_vel_limits(self):
+    #     # Penalize dof velocities too close to the limit
+    #     # clip to max error = 1 rad/s per joint to avoid huge penalties
+    #     return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
+
+    # def _reward_torque_limits(self):
+    #     # penalize torques too close to the limit
+    #     return torch.sum((torch.abs(self.torques) - self.torque_limits*self.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
+
+    # def _reward_tracking_lin_vel(self):
+    #     # Tracking of linear velocity commands (xy axes)
+    #     # lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+    #     x_error = torch.square(self.commands[:, 0] + self.base_lin_vel[:, 2])#站立起来的话，本体的x轴对应世界系的z，本体z轴对应世界系的-x
+    #     y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
+    #     # print(torch.mean(self.rew_hanstand),self.rew_hanstand.shape)
+    #     return torch.exp(-(y_error+x_error)/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
+    
+    # def _reward_tracking_ang_vel(self):
+    #     # Tracking of angular velocity commands (yaw) 
+    #     ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 0])
+    #     # print(torch.mean(self.episode_sums["handstand_orientation"]))
+    #     return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
+
+    
+    # def _reward_default_pos(self):
+    #     # Penalize motion at zero commands
+    #     return torch.sum(torch.abs(self.dof_pos - self.descire_joint_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
     
     
-    def _reward_feet_contact_forces(self):
-        # penalize high contact forces
-        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    # def _reward_feet_contact_forces(self):
+    #     # penalize high contact forces
+    #     return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
 
-    def _reward_handstand_feet_on_air(self):
-        """
-        脚部在空奖励：
-        1. 使用 self.contact_forces 判断足部是否接触地面（通过预先设置的阈值）。
-        2. 如果所有足部都没有接触地面，则奖励1，否则奖励为0（或取平均）。
-        """
+    # def _reward_handstand_feet_on_air(self):
+    #     """
+    #     脚部在空奖励：
+    #     1. 使用 self.contact_forces 判断足部是否接触地面（通过预先设置的阈值）。
+    #     2. 如果所有足部都没有接触地面，则奖励1，否则奖励为0（或取平均）。
+    #     """
 
-        # contact_forces: shape = (num_envs, num_bodies, 3)
-        contact = torch.norm(self.contact_forces[:, self.feet_name_reward_indices , :], dim=-1) > 1.0
-        # 如果所有足部均未接触地面，reward = 1；也可以使用 mean 得到部分奖励
-        reward = (~contact).float().prod(dim=1)
-        # print(reward)
-        return reward
-        # return 0
+    #     # contact_forces: shape = (num_envs, num_bodies, 3)
+    #     contact = torch.norm(self.contact_forces[:, self.feet_name_reward_indices , :], dim=-1) > 1.0
+    #     # 如果所有足部均未接触地面，reward = 1；也可以使用 mean 得到部分奖励
+    #     reward = (~contact).float().prod(dim=1)
+    #     # print(reward)
+    #     return reward
+    #     # return 0
 
 
-    def _reward_handstand_orientation(self):
-        """
-        姿态奖励：
-        1. 使用 self.projected_gravity（机器人基座坐标系下的重力投影）来评估姿态。
-        2. 目标重力方向通过配置传入（例如 [1, 0, 0] 表示目标为竖直向上）。
-        3. 对比当前和目标重力方向的 L2 距离，偏差越大惩罚越大。
-        """
-        # self.rew_hanstand=torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
+    # def _reward_handstand_orientation(self):
+    #     """
+    #     姿态奖励：
+    #     1. 使用 self.projected_gravity（机器人基座坐标系下的重力投影）来评估姿态。
+    #     2. 目标重力方向通过配置传入（例如 [1, 0, 0] 表示目标为竖直向上）。
+    #     3. 对比当前和目标重力方向的 L2 距离，偏差越大惩罚越大。
+    #     """
+    #     # self.rew_hanstand=torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
     
-        return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
+    #     return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
 
-    def _reward_contact(self):
-        res = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        for i in range(2):
-            is_stance = self.leg_phase[:, i] < 0.51
-            contact = self.contact_forces[:, self.contact_foot_indices[i], 2] > 1
-            res += ~(contact ^ is_stance)
-        return res
+    # def _reward_contact(self):
+    #     res = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+    #     for i in range(2):
+    #         is_stance = self.leg_phase[:, i] < 0.51
+    #         contact = self.contact_forces[:, self.contact_foot_indices[i], 2] > 1
+    #         res += ~(contact ^ is_stance)
+    #     return res
     

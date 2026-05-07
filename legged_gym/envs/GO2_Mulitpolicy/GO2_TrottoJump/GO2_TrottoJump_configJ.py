@@ -1,28 +1,26 @@
-from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
-
+class GO2_TrottoJump_Cfg( LeggedRobotCfg ):
     class env:
-        frame_stack = 1 #action stack
-        c_frame_stack = 1 #critic 网络的堆叠帧数
+        # change the observation dim
+        frame_stack = 10 #action stack   #jump
+        c_frame_stack = 3 #critic 网络的堆叠帧数
+        num_envs = 4096 #4096
         num_single_obs = 48 #这个是传感器可以获得到的信息
         num_observations = int(frame_stack * num_single_obs) # 10帧正常的观测
-        single_num_privileged_obs = 68  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
+        single_num_privileged_obs = 70  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
         num_privileged_obs = int(c_frame_stack * single_num_privileged_obs) # 3帧特权观测
         num_actions = 12
-        num_envs = 4096
+        episode_length_s = 24 # episode length in seconds
         env_spacing = 3.  # not used with heightfields/trimeshes 
-        send_timeouts = True # send time out information to the algorithm
-        episode_length_s = 20 # episode length in seconds
-        test = False
-
+        joint_num = 12
+        send_timeouts=True
     class terrain:
         mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
-        curriculum = True
+        curriculum = False
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.
@@ -30,7 +28,7 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
         measure_heights = False
         measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
-        selected = None# select a unique terrain type and pass all arguments
+        selected = False# select a unique terrain type and pass all arguments
         terrain_kwargs = None # Dict of arguments for selected terrain
         max_init_terrain_level = 5 # starting curriculum state
         terrain_length = 8.
@@ -38,32 +36,37 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        # terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
         terrain_proportions = [0., 0., 1.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
     class commands:
         curriculum = True
-        max_curriculum = 1.
+        max_curriculum = 2.0
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 5. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
         class ranges:
-            lin_vel_x = [-0.8,0.8] # min max [m/s]
-            lin_vel_y = [-0.8, 0.8]   # min max [m/s]
-            ang_vel_yaw = [-0.8, 0.8]    # min max [rad/s]
+            lin_vel_x = [0.5,1.2] # min max [m/s]
+            # lin_vel_y = [-1.0, 1.0]   # min max [m/s]
+            # ang_vel_yaw = [-1, 1]    # min max [rad/s]
+            # heading = [-3.14, 3.14]
+            # lin_vel_x = [0.0, 0.0]    
+            lin_vel_y = [-0.0, 0.0]   
+            ang_vel_yaw = [-0.0, 0.0] 
             heading = [-3.14, 3.14]
 
-    class init_state( LeggedRobotCfg.init_state ):
+    class init_state(LeggedRobotCfg.init_state):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
         rot = [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
-        default_joint_angles = { # = target angles [rad] when action = 0.0
+        default_joint_angles = {# = target angles [rad] when action = 0.0
+
             'FL_hip_joint': 0.1,   # [rad]
             'RL_hip_joint': 0.1,   # [rad]
             'FR_hip_joint': -0.1 ,  # [rad]
             'RR_hip_joint': -0.1,   # [rad]
+
             'FL_thigh_joint': 0.8,     # [rad]
             'RL_thigh_joint': 1.0,#1.,   # [rad]
             'FR_thigh_joint': 0.8,     # [rad]
@@ -74,29 +77,14 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
             'FR_calf_joint': -1.5,  # [rad]
             'RR_calf_joint': -1.5,    # [rad]
         }
-        descire_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.,   # [rad]
-            'RL_hip_joint': 0.,   # [rad]
-            'FR_hip_joint': 0. ,  # [rad]
-            'RR_hip_joint': 0.,   # [rad]
 
-            'FL_thigh_joint': 1.75,     # [rad]
-            'RL_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
-            'FR_thigh_joint': 1.75,     # [rad]
-            'RR_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
-
-            'FL_calf_joint': -1.75,   # [rad]
-            'RL_calf_joint': -1.75,    # [rad]
-            'FR_calf_joint': -1.75,  # [rad]
-            'RR_calf_joint': -1.75,    # [rad]
-        }
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 40.}  # [N*m/rad]
-        damping = {'joint': 1}     # [N*m*s/rad]
+        stiffness = {'joint': 20.}  # [N*m/rad]
+        damping = {'joint': 0.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
-        action_scale = 0.25  # 正常0.25
+        action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
     class asset:
@@ -105,13 +93,8 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf"]
         terminate_after_contacts_on = ["base"]
-        feet_name_reward=['FL_foot', 'FR_foot']
-        contact_foot=['RL_foot', 'RR_foot']
-        target_gravity=[-1.0, 0.0, 0.0]
-        threshold=5.0
-        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         disable_gravity = False
-        collapse_fixed_joints = False # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+        collapse_fixed_joints = True # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
         fix_base_link = False # fixe the base of the robot
         default_dof_drive_mode = 3 # see GymDofDriveModeFlags (0 is none, 1 is pos tgt, 2 is vel tgt, 3 effort)
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
@@ -127,15 +110,13 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
         thickness = 0.01
     class domain_rand:
         randomize_friction = True
-        friction_range = [0.5, 1.25]
-        randomize_base_mass = False
-        added_mass_range = [-1., 1.]
+        friction_range = [0.4,0.8]
+
         push_robots = True
-        push_interval_s = 15
-        max_push_vel_xy = 0.5
+        push_interval_s = 4
+        max_push_vel_xy = 0.4
         max_push_ang_vel = 0.6
 
-        randomize_motor_zero_offset = True
         randomize_base_mass = True
         added_base_mass_range = [-1,1]
 
@@ -147,13 +128,13 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
 
         randomize_pd_gains = True
         stiffness_multiplier_range = [0.9, 1.1]  
-        damping_multiplier_range = [0.9, 1.1]   
+        damping_multiplier_range = [0.9, 1.1]    
+
 
         randomize_motor_zero_offset = True
         motor_zero_offset_range = [-0.035, 0.035] # Offset to add to the motor angles
 
-
-        # range to contain the real joint armature 
+   # range to contain the real joint armature 
 
         add_obs_latency = True # no latency for obs_action
         randomize_obs_motor_latency = True
@@ -167,40 +148,39 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
 
     class rewards:
         class scales:
-            termination = -0.0
-            tracking_lin_vel = 2.5
-            tracking_ang_vel = 0.5
-            lin_vel_z = 0.2
-            ang_vel_xy = 0.2
-            handstand_orientation = 5.0 #0.1 1.0
-            torques = -0.0002
-            dof_vel = -0.
-            dof_acc = -5.5e-4
-            base_height = 0.6 #0.1 
-            handstand_feet_on_air =  0.4
-            collision = -1.
+            termination = -1.0
+            tracking_lin_vel = 6.0
+            tracking_ang_vel = 2.0
+            lin_vel_z = 0.00
+            ang_vel_xy = -0.01 #平地的
+            orientation = 0.5
+            torques = 0.0 #-0.0002
+            dof_vel = -1e-4
+            dof_acc = -1e-5
+            base_height = 2.0#0.1 
+            feet_air_time =  1.0
+            collision = -5.0
             feet_stumble = -0.0 
-            action_rate = -0.01
-            default_pos =-0.3####
-            # contact=0.3
+            action_rate = -0.001
+            stand_still = -2.
+            default_pos =-0.1####-0.04
+            default_hip_pos = -2.0#-1.0
+            feet_contact_forces=-0.005#-0.01
+            jump=5.0
+            trot=0.0
+            feet_clearance=8.0#5.0
+            horizontal_force = 0.0
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
-        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
+        tracking_sigma = 0.5 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 0.9 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
-        base_height_target = 0.52#0.25
-        max_contact_force = 200. # forces above this value are penalized
+        base_height_target = 0.38#0.25
+        max_contact_force = 100. # forces above this value are penalized
         cycle_time=0.5
-    
-    class motion_loader:
-        reference_motion_file = LEGGED_GYM_ROOT_DIR + "/resources/robots/go2/datasets/reference_handstand.pt"
-        corruption_level = 0.0
-        reference_observation_horizon = 2
-        test_mode = False
-        test_observation_dim = None # observation_dim of reference motion
 
-
+        target_feet_height=0.08#0.05
     class normalization:
         class obs_scales:
             lin_vel = 2.0
@@ -250,15 +230,9 @@ class GO2_TrotConHandstand_Cfg( LeggedRobotCfg ):
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 
-class GO2_TrotConHandstand_PPO(LeggedRobotCfgPPO):
+class GO2_TrottoJump_PPO(LeggedRobotCfgPPO):
     seed = 1
-    runner_class_name = 'LatsmoPolicyRunner'
-    class discriminator:
-        reward_coef = 0.1
-        reward_lerp = 0.9 # wasabi_reward = (1 - reward_lerp) * style_reward + reward_lerp * task_reward
-        style_reward_function = "quad_mapping" # log_mapping, quad_mapping, wasserstein_mapping
-        shape = [512, 256]
-
+    runner_class_name = 'OnPolicyRunner'
     class policy:
         init_noise_std = 1.0
         actor_hidden_dims = [512, 256, 128]
@@ -277,33 +251,31 @@ class GO2_TrotConHandstand_PPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 1.e-3 #5.e-4
+        learning_rate = 1.e-5 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
         max_grad_norm = 1.
         sym_loss = False
-        obs_permutation = [-0.0001, -1, 2, -3, 4,-5,
-                           -11, -12, 13, 14, 15, -16, -5 , -6 , 7 , 8 , 9 , -10,\
-                           -23, -24, 25, 26, 27, -28, -17, -18, 19, 20, 21, -22,\
-                           -35, -36, 37, 38, 39, -40, -29, -30, 31, 32, 33, -34,\
-                           -41, 42, -43, -44, 45, -46]
-        # act_permutation = [-6, -7, 8, 9, 10, -11, -0.0001, -1, 2, 3, 4, -5]#关节电机的对陈关系
-        act_permutation = [-3, 4, 5,-0.0001, 1, 2 , -9, 10, 11,-6, 7, 8,]#关节电机的对陈关系
+        obs_permutation = [-0.0001, -1, 2, -3, -4,
+                           -5,6,-7,-8,9,-10,
+                       -14,15,16,-11,12,13,-20,21,22,-17,18,19,
+                       -26,27,28,-23,24,25,-32,33,34,-29,30,31,
+                       -38,39,40,-35,36,37,-44,45,46,-41,42,43]
+
+        act_permutation = [ -3, 4, 5, -0.0001, 1, 2, -9, 10, 11,-6, 7, 8,]#关节电机的对陈关系
         frame_stack = 10
         sym_coef = 1.0
-
     class runner:
-        policy_class_name = 'ActorCriticLatent'
-        algorithm_class_name = 'PPO_LAT'
-        normalize_style_reward = False
+        policy_class_name = 'ActorCritic'
+        algorithm_class_name = 'PPO'
         num_steps_per_env = 24 # per iteration
         max_iterations = 8000 # number of policy updates
 
         # logging
-        save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_trotconhandstand'
+        save_interval = 100 # check for potential saves every this many iterations
+        experiment_name = 'go2_trottojumpJ'
         run_name = ''
         # load and resume
         resume = False

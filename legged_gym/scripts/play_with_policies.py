@@ -226,7 +226,7 @@ def play(args):
 
     
 
-    stop_state_log = 800 # number of steps before plotting states
+    stop_state_log = 470 # number of steps before plotting states #800
     model1.eval()
     model2.eval()
     obs = env.get_observations()
@@ -255,10 +255,10 @@ def play(args):
 
 
         # obs, critic_obs, rews, dones, infos = env.step(actions.detach())
-        if i < stop_state_log:
+        if i> 350 and i < stop_state_log:
             logger.log_states(
                 {
-                    'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
+                    'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale + 0.5,
                     'dof_pos': env.dof_pos[robot_index, joint_index].item(),
                     'dof_vel': env.dof_vel[robot_index, joint_index].item(),
                     'dof_torque': env.torques[robot_index, joint_index].item(),

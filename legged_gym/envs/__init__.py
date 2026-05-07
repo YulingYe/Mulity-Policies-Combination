@@ -28,10 +28,14 @@ from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_env import Go2_Spr
 from legged_gym.envs.GO2_Flip.GO2_Spring_Jump.GO2_Spring_JUMP_config import GO2_Spring_JUMP_Cfg_Yu,GO2_Spring_JUMP_PPO_Yu
 
 from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand  import GO2_TrottoHandstand_Robot
-from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configH import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoHandstand.GO2_TrottoHandstand_configT import GO2_TrottoHandstand_Cfg,GO2_TrottoHandstand_PPO
 
 from legged_gym.envs.GO2_Mulitpolicy.GO2_StairstoHandstand.GO2_StairstoHandstand  import GO2_StairstoHandstand_Robot
 from legged_gym.envs.GO2_Mulitpolicy.GO2_StairstoHandstand.GO2_StairstoHandstand_configS import GO2_StairstoHandstand_Cfg,GO2_StairstoHandstand_PPO
+
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoJump.GO2_TrottoJump import GO2_TrottoJump_Robot
+from legged_gym.envs.GO2_Mulitpolicy.GO2_TrottoJump.GO2_TrottoJump_configT import GO2_TrottoJump_Cfg, GO2_TrottoJump_PPO
+
 
 from legged_gym.envs.GO2_Policyconnection.GO2_TrotConHandstand.GO2_TrotConHandstand import GO2_TrotConHandstand_Robot
 from legged_gym.envs.GO2_Policyconnection.GO2_TrotConHandstand.GO2_TrotConHandstand_config import GO2_TrotConHandstand_Cfg, GO2_TrotConHandstand_PPO
@@ -45,5 +49,6 @@ task_registry.register( "go2_spring_jump", Go2_Spring_Jump, GO2_Spring_JUMP_Cfg_
 task_registry.register( "go2_backflip", Go2_BackFlip, GO2_BackFlip_Cfg_Yu(), GO2_BackFlip_PPO_Yu())
 task_registry.register( "go2_trottohandstand", GO2_TrottoHandstand_Robot, GO2_TrottoHandstand_Cfg(), GO2_TrottoHandstand_PPO())
 task_registry.register( "go2_stairstohandstand", GO2_StairstoHandstand_Robot, GO2_StairstoHandstand_Cfg(), GO2_StairstoHandstand_PPO())
+task_registry.register( "go2_trottojump", GO2_TrottoJump_Robot, GO2_TrottoJump_Cfg(), GO2_TrottoJump_PPO())
 task_registry.register( "go2_trotconhandstand", GO2_TrotConHandstand_Robot, GO2_TrotConHandstand_Cfg(), GO2_TrotConHandstand_PPO())
 print("注册的任务:  ",task_registry.task_classes)

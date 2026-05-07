@@ -38,6 +38,8 @@ import torch
 
 #from rsl_rl.algorithms import PPO
 from rsl_rl.algorithms import PPO_LAT
+from rsl_rl.modules.discriminator import Discriminator
+from rsl_rl.modules.normalizer import Normalizer
 from rsl_rl.modules import ActorCritic, ActorCriticLatent, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
 
@@ -53,6 +55,7 @@ class LatsmoPolicyRunner:
         self.cfg=train_cfg["runner"]
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
+        self.discriminator_cfg = train_cfg["discriminator"]
         self.device = device
         self.env = env
         if self.env.num_privileged_obs is not None:
@@ -64,8 +67,24 @@ class LatsmoPolicyRunner:
                                                         num_critic_obs,
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
-        alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        self.alg: PPO_LAT = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        alg_class = eval(self.cfg["algorithm_class_name"]) # PPOLAN
+
+        wasabi_expert_data = self.env.motion_loader
+        wasabi_state_normalizer = Normalizer(wasabi_expert_data.observation_dim, self.device)
+        if self.cfg["normalize_style_reward"]:
+            wasabi_style_reward_normalizer = Normalizer(1, self.device)
+        else:
+            wasabi_style_reward_normalizer = None
+        discriminator = Discriminator(
+            observation_dim=wasabi_expert_data.observation_dim,
+            observation_horizon=self.env.reference_observation_horizon,
+            device=self.device,
+            **self.discriminator_cfg).to(self.device)
+
+        self.alg: PPO_LAT = alg_class(actor_critic, discriminator, wasabi_expert_data, wasabi_state_normalizer, wasabi_style_reward_normalizer, device=self.device, **self.alg_cfg)
+        self.env.discriminator = discriminator
+        self.env.wasabi_state_normalizer = wasabi_state_normalizer
+        self.env.wasabi_style_reward_normalizer = wasabi_style_reward_normalizer
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
 
@@ -89,8 +108,9 @@ class LatsmoPolicyRunner:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         obs = self.env.get_observations()
         privileged_obs = self.env.get_privileged_observations()
+        wasabi_observation_buf = self.env.get_wasabi_observation_buf() #获得技能观测空间
         critic_obs = privileged_obs if privileged_obs is not None else obs
-        obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
+        obs, critic_obs, wasabi_observation_buf = obs.to(self.device), critic_obs.to(self.device), wasabi_observation_buf.to(self.device)
         self.alg.actor_critic.train() # switch to train mode (for dropout for example)
 
         ep_infos = []
@@ -105,11 +125,14 @@ class LatsmoPolicyRunner:
             # Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
-                    actions = self.alg.act(obs, critic_obs)
+                    actions = self.alg.act(obs, critic_obs, wasabi_observation_buf)
                     obs, privileged_obs, rewards, dones, infos = self.env.step(actions)
+                    next_wasabi_obs = self.env.get_wasabi_observations() #下一模仿观测空间
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
-                    self.alg.process_env_step(rewards, dones, infos)
+                    wasabi_observation_buf[:, :-1] = wasabi_observation_buf[:, 1:].clone()
+                    wasabi_observation_buf[:, -1] = next_wasabi_obs.clone()
+                    self.alg.process_env_step(rewards, dones, infos, next_wasabi_obs)
                     
                     if self.log_dir is not None:
                         # Book keeping
@@ -130,7 +153,7 @@ class LatsmoPolicyRunner:
                 start = stop
                 self.alg.compute_returns(critic_obs)
             
-            mean_value_loss, mean_surrogate_loss ,systemloss, temporal_loss, loss = self.alg.update()
+            mean_value_loss, mean_surrogate_loss ,systemloss, mean_wasabi_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred, temporal_loss, loss = self.alg.update()
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
