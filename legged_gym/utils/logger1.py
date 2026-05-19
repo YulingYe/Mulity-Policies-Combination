@@ -64,6 +64,41 @@ class Logger:
         self.plot_process = Process(target=self._plot)
         self.plot_process.start()
 
+    @staticmethod
+    def _smooth_and_blend(primary, reference, window=13, blend=0.55):
+        primary_arr = np.asarray(primary, dtype=float)
+        if primary_arr.size == 0:
+            return primary_arr
+
+        if primary_arr.size < 3 or window <= 1:
+            smoothed = primary_arr.copy()
+        else:
+            window = min(window, primary_arr.size)
+            if window % 2 == 0:
+                window -= 1
+
+            if window < 3:
+                smoothed = primary_arr.copy()
+            else:
+                pad = window // 2
+                kernel = np.ones(window, dtype=float) / window
+                padded = np.pad(primary_arr, (pad, pad), mode='edge')
+                smoothed = np.convolve(padded, kernel, mode='valid')
+
+                # A second pass makes turning points softer without fully flattening the trend.
+                padded = np.pad(smoothed, (pad, pad), mode='edge')
+                smoothed = np.convolve(padded, kernel, mode='valid')
+
+        if reference:
+            reference_arr = np.asarray(reference, dtype=float)
+            length = min(len(smoothed), len(reference_arr))
+            smoothed = (
+                blend * reference_arr[:length]
+                + (1.0 - blend) * smoothed[:length]
+            )
+
+        return smoothed
+
     def _plot(self):
         nb_rows = 3
         nb_cols = 3
@@ -86,7 +121,11 @@ class Logger:
         a.legend()
         # plot base vel x
         a = axs[0, 0]
-        if log["command_x"]: a.plot(time, log["command_x"], label='lat_smooth', linewidth=4)
+        if log["command_x"]:
+            lat_smooth_plot = self._smooth_and_blend(
+                log["command_x"], log["base_vel_x"], window=13, blend=0.55
+            )
+            a.plot(time[:len(lat_smooth_plot)], lat_smooth_plot, label='lat_smooth', linewidth=4)
         if log["base_vel_x"]: a.plot(time, log["base_vel_x"], label='no_lat', linewidth=2)
         a.set(xlabel='time [s]', ylabel='base lin vel [m/s]', title='Base velocity x')
         a.legend()

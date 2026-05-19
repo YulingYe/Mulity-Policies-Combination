@@ -123,7 +123,7 @@ def play(args):
             print("final_resember-----",final_resember.shape)
 
             # 将采样得到的参考轨迹保存到磁盘，供 motion loader 或后续模仿学习读取。
-            torch.save(final_resember, 'reference_handstand.pt')
+            torch.save(final_resember, 'reference_trot.pt')
         if  0 < i < stop_rew_log:
             if infos["episode"]:
                 num_episodes = torch.sum(env.reset_buf).item()
