@@ -31,13 +31,16 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 
 from rsl_rl.modules import ActorCriticLatent
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.modules.discriminator import Discriminator
+from rsl_rl.modules.cvae import CVAE
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.modules.temporal_gradient_coordinator import TemporalGradientCoordinator
 import numpy as np
+from legged_gym import LEGGED_GYM_ROOT_DIR
 
 class PPO_LAT:
     actor_critic: ActorCriticLatent
@@ -78,6 +81,9 @@ class PPO_LAT:
 
                  # 新增参数
                  latent_dim=16,
+                 cond_dim=8,          # 新增：条件维度，默认8
+                 cvae_coef=1.0,
+                 cvae_beta=0.5,
                  cassi_coef=0.1,
                  temporal_coef=0.05,
                  swing_trigger_vel=0.8,
@@ -100,7 +106,6 @@ class PPO_LAT:
         self.actor_critic = actor_critic
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
         self.transition = RolloutStorage.Transition()
 
         # PPO parameters
@@ -160,11 +165,14 @@ class PPO_LAT:
 
         # 新增组件
         self.latent_dim = latent_dim
+        self.cond_dim = cond_dim
+        self.cvae_coef = cvae_coef
+        self.cvae_beta = cvae_beta
         self.cassi_coef = cassi_coef
         self.temporal_coef = temporal_coef
         self.swing_trigger_vel = swing_trigger_vel
         self.full_stand_vel = full_stand_vel
-
+        
         # # CASSI判别器
         # self.cassi_disc = CASSIDiscriminator(
         #     state_dim=self.actor_critic.num_actor_obs,
@@ -173,11 +181,84 @@ class PPO_LAT:
         # ).to(device)
         # self.cassi_optimizer = optim.Adam(self.cassi_disc.parameters(), lr=1e-4)
 
+        self.reference_obs_dim = self.wasabi_expert_data.observation_dim
+        self.reference_observation_start_dim = self.wasabi_expert_data.observation_start_dim
+        self.cvae = CVAE(
+            obs_dim=self.reference_obs_dim,
+            cond_dim=cond_dim,
+            latent_dim=latent_dim,
+        ).to(self.device)
+        self.reference_trot_data = self._load_reference_trot_data()
+        self.optimizer = optim.Adam(
+            list(self.actor_critic.parameters()) + list(self.cvae.parameters()),
+            lr=learning_rate,
+        )
+
         # 时序协调器
         self.temporal_coord = TemporalGradientCoordinator(
             latent_dim=latent_dim, device=device
         )
         self.prev_z = None  # 存储上一步潜码
+
+    def _load_reference_trot_data(self):
+        reference_trot_path = os.path.join(LEGGED_GYM_ROOT_DIR, "reference_jump.pt")
+        if not os.path.exists(reference_trot_path):
+            return None
+
+        loaded_data = torch.load(reference_trot_path, map_location="cpu")
+        if loaded_data.dim() != 3:
+            print(f"[PPO_LAT] Skip CVAE reference_trot load due to unexpected shape: {tuple(loaded_data.shape)}")
+            return None
+
+        reference_obs = loaded_data[:, :, self.reference_observation_start_dim:].contiguous()
+        if reference_obs.shape[-1] != self.reference_obs_dim:
+            print(
+                "[PPO_LAT] Skip CVAE reference_trot load because observation dim "
+                f"{reference_obs.shape[-1]} != expected {self.reference_obs_dim}"
+            )
+            return None
+
+        print(
+            f"[PPO_LAT] Loaded reference_trot.pt for CVAE with shape {tuple(reference_obs.shape)}"
+        )
+        return reference_obs
+
+    def _sample_reference_observations(self, batch_size):
+        if self.reference_trot_data is not None:
+            num_clips, num_steps, _ = self.reference_trot_data.shape
+            clip_ids = torch.randint(0, num_clips, (batch_size,))
+            step_ids = torch.randint(0, num_steps, (batch_size,))
+            reference_obs = self.reference_trot_data[clip_ids, step_ids]
+            return reference_obs.to(self.device)
+
+        return self.wasabi_expert_data.get_frames(batch_size)[:, self.reference_observation_start_dim:]
+
+    def _build_cvae_condition(self, batch_size, target_velocity=None, swing_command=None):
+        condition = torch.zeros(batch_size, self.cond_dim, device=self.device)
+
+        if target_velocity is not None:
+            target_velocity = torch.as_tensor(
+                target_velocity, device=self.device, dtype=condition.dtype
+            ).view(batch_size, -1)
+            condition[:, :min(target_velocity.shape[1], self.cond_dim)] = target_velocity[:, :self.cond_dim]
+
+        if swing_command is not None and self.cond_dim > 0:
+            swing_command = torch.as_tensor(
+                swing_command, device=self.device, dtype=condition.dtype
+            ).view(batch_size, -1)
+            condition[:, -1] = swing_command[:, 0]
+
+        return condition
+
+    def _sample_cvae_latent(self, batch_size, target_velocity=None, swing_command=None, deterministic=False):
+        reference_obs = self._sample_reference_observations(batch_size)
+        condition = self._build_cvae_condition(batch_size, target_velocity, swing_command)
+        raw_z, mu, logvar, std = self.cvae.sample_latent(reference_obs, condition, deterministic=deterministic)
+        z = torch.tanh(raw_z)
+        z_mean = torch.tanh(mu)
+        z_log_prob = -0.5 * (((raw_z - mu) / (std + 1e-8)) ** 2) - torch.log(std + 1e-8) - 0.5 * np.log(2 * np.pi)
+        z_log_prob = z_log_prob.sum(dim=-1)
+        return z, z_log_prob, z_mean, std, reference_obs, condition
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
         # rollout buffer 在拿到环境规模后再创建，避免在 __init__ 中依赖任务配置。
@@ -198,7 +279,12 @@ class PPO_LAT:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
         
         # 潜码生成
-        z, z_log_prob, z_mean, z_std = self.actor_critic.get_latent(obs, deterministic=False)
+        z, z_log_prob, z_mean, z_std, reference_obs, condition = self._sample_cvae_latent(
+            obs.shape[0],
+            target_velocity=target_velocity,
+            swing_command=swing_command,
+            deterministic=False,
+        )
 
         # 边界调制（根据速度和命令）
         if target_velocity is not None:
@@ -241,6 +327,8 @@ class PPO_LAT:
         self._cassi_state = obs.clone()
         self._cassi_action = self.transition.actions.clone()
         self._cassi_z = z.clone()
+        self._cvae_reference_obs = reference_obs.detach()
+        self._cvae_condition = condition.detach()
 
         return self.transition.actions
     
@@ -355,16 +443,15 @@ class PPO_LAT:
                 # 当前任务已经加入运动模仿，TemporalGradientCoordinator 只用于 handstand 策略训练：
                 # 从四足站立状态逐步过渡到 handstand，不再处理 trot 技能切换。
                 temporal_loss = 0.0
-                if self.temporal_coef > 0:
-                  # 这里只把潜变量 z 作为“状态变化信号”交给时序协调器评估，
-                  # 不希望 temporal_loss 反向影响 forward_latent 本身的计算图，因此使用 no_grad。
-                  with torch.no_grad():
-                    # forward_latent 返回当前 mini-batch 观测对应的潜变量分布参数。
+                reference_obs_batch = self._sample_reference_observations(obs_batch.shape[0])
+                condition = self._build_cvae_condition(obs_batch.shape[0])
+                # 这里只把潜变量 z 作为“状态变化信号”交给时序协调器评估，
+                # 不希望 temporal_loss 反向影响 CVAE 编码本身的计算图，因此使用 no_grad。
+                with torch.no_grad():
                     # 这里使用均值 z_mean_batch，而不是随机采样的 z，避免采样噪声干扰时序平滑判断。
-                    z_mean_batch, _ = self.actor_critic.forward_latent(obs_batch)
-                    # tanh 将潜变量压到 [-1, 1]，与 actor 使用潜码时的边界范围保持一致。
+                    z_mean_batch, _, _ = self.cvae.encode(reference_obs_batch, condition)
                     z_batch = torch.tanh(z_mean_batch)
-                if self.prev_z is not None:
+                if self.temporal_coef > 0 and self.prev_z is not None:
                     # 使用当前 batch 潜码与上一 batch 潜码的差值，近似表示“潜空间时序梯度”。
                     # 虽然这里仍传入旧字符串 'transition'，但 TemporalGradientCoordinator 内部会把它映射为
                     # handstand_transition，即“四足站立 -> handstand”的过渡阶段。
@@ -380,9 +467,18 @@ class PPO_LAT:
                     )
                 # 保存当前潜码，供下一次 PPO mini-batch 更新时作为时序参考。
                 self.prev_z = z_batch.detach()
+                cvae_loss, _, _ = self.cvae.loss(reference_obs_batch, condition, beta=self.cvae_beta)
+
 
                 # 总损失 = policy + value - entropy bonus + symmetry regularization
-                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean() + self.sym_coef * sym_loss + temporal_loss
+                loss = (
+                    surrogate_loss
+                    + self.value_loss_coef * value_loss
+                    - self.entropy_coef * entropy_batch.mean()
+                    + self.sym_coef * sym_loss
+                    + temporal_loss
+                    + self.cvae_coef * cvae_loss
+                )
 
 
                 # Gradient step
