@@ -156,6 +156,7 @@ class Go2_Fronthandstand(BaseTask):
         self.last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
+        self.stand_command[env_ids] = 1.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         # fill extras
@@ -321,6 +322,11 @@ class Go2_Fronthandstand(BaseTask):
         # 
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
         self._resample_commands(env_ids)
+        if self.cfg.domain_rand.stand_command:
+            self.cfg.domain_rand.stand_time = np.ceil(self.cfg.domain_rand.command_time / self.dt)
+            self.cfg.domain_rand.stop_time = np.ceil((self.cfg.env.episode_length_s - self.cfg.domain_rand.command_time) / self.dt)
+            self.stand_command[((self.episode_length_buf % self.cfg.domain_rand.stand_time) == 0) & (self.episode_length_buf > 0)] = 1
+            self.stand_command[((self.episode_length_buf % self.cfg.domain_rand.stop_time) == 0) & (self.episode_length_buf > 0)] = 0
         if self.cfg.commands.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
@@ -360,6 +366,9 @@ class Go2_Fronthandstand(BaseTask):
             [torch.Tensor]: Torques sent to the simulation
         """
         #pd controller
+        if self.cfg.control.front_thigh_action_bias != 0.:
+            actions = actions.clone()
+            actions[:, self.front_thigh_dof_indices] += self.cfg.control.front_thigh_action_bias * self.stand_command
         actions_scaled = actions * self.cfg.control.action_scale
         control_type = self.cfg.control.control_type
         if control_type=="P":
@@ -381,7 +390,15 @@ class Go2_Fronthandstand(BaseTask):
             env_ids (List[int]): Environemnt ids
             关节角度设置为0.5 15 倍的默认关节角度。速度设置为0
         """
-        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
+        if self.cfg.init_state.reset_to_default_pose:
+            self.dof_pos[env_ids] = self.default_dof_pos + torch_rand_float(
+                -self.cfg.init_state.reset_dof_pos_noise,
+                self.cfg.init_state.reset_dof_pos_noise,
+                (len(env_ids), self.num_dof),
+                device=self.device,
+            )
+        else:
+            self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -405,7 +422,18 @@ class Go2_Fronthandstand(BaseTask):
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
         # base velocities
-        self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
+        self.root_states[env_ids, 7:10] = torch_rand_float(
+            -self.cfg.init_state.reset_lin_vel_noise,
+            self.cfg.init_state.reset_lin_vel_noise,
+            (len(env_ids), 3),
+            device=self.device,
+        )
+        self.root_states[env_ids, 10:13] = torch_rand_float(
+            -self.cfg.init_state.reset_ang_vel_noise,
+            self.cfg.init_state.reset_ang_vel_noise,
+            (len(env_ids), 3),
+            device=self.device,
+        )
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
@@ -467,7 +495,7 @@ class Go2_Fronthandstand(BaseTask):
         self.add_noise = self.cfg.noise.add_noise
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
-        noise_vec[:3] = noise_scales.lin_vel * noise_level * self.obs_scales.lin_vel
+        noise_vec[:3] = 0. # phase + stand command
         noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
         noise_vec[6:9] = noise_scales.gravity * noise_level
         noise_vec[9:12] = 0. # commands
@@ -498,7 +526,7 @@ class Go2_Fronthandstand(BaseTask):
         self.base_quat = self.root_states[:, 3:7]
 
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
-        self.stand_command=torch.zeros((self.num_envs, 1), dtype=torch.float, device=self.device)
+        self.stand_command=torch.ones((self.num_envs, 1), dtype=torch.float, device=self.device)
         # initialize some data used later on
         self.common_step_counter = 0
         self.extras = {}
@@ -526,12 +554,15 @@ class Go2_Fronthandstand(BaseTask):
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.descire_joint_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        front_thigh_dof_ids = []
         for i in range(self.num_dofs):
             name = self.dof_names[i]
             angle = self.cfg.init_state.default_joint_angles[name]
             angle_2= self.cfg.init_state.descire_joint_angles[name]
             self.default_dof_pos[i] = angle
             self.descire_joint_pos[i] = angle_2
+            if name.startswith(("FL_", "FR_")) and "thigh" in name:
+                front_thigh_dof_ids.append(i)
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
@@ -544,6 +575,7 @@ class Go2_Fronthandstand(BaseTask):
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self.front_thigh_dof_indices = torch.tensor(front_thigh_dof_ids, dtype=torch.long, device=self.device, requires_grad=False)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -718,7 +750,6 @@ class Go2_Fronthandstand(BaseTask):
         for i in range(len(contact_foot)):
             self.contact_foot_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], contact_foot[i])
 
-
         self.target_gravity=torch.tensor(self.cfg.asset.target_gravity,dtype=torch.float,device=self.device,requires_grad=False)
         self.rew_hanstand=torch.zeros(1,dtype=torch.float,device=self.device,requires_grad=False)
     def _get_env_origins(self):
@@ -847,9 +878,11 @@ class Go2_Fronthandstand(BaseTask):
 
     def _reward_base_height(self):
         # Penalize base height away from target
+        self.rew_hanstand = self._handstand_height_reward()
+        return self.rew_hanstand
+
+    def _handstand_height_reward(self):
         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        # print("!!!!!!_reward_base_height",torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)))
-        self.rew_hanstand=torch.mean(torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10))
         return torch.exp(-torch.abs(base_height - self.cfg.rewards.base_height_target)*10)
 
     def _reward_torques(self):
@@ -895,22 +928,53 @@ class Go2_Fronthandstand(BaseTask):
 
     def _reward_tracking_lin_vel(self):
         # Tracking of linear velocity commands (xy axes)
-        # lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
-        x_error = torch.square(self.commands[:, 0] + self.base_lin_vel[:, 2])#站立起来的话，本体的x轴对应世界系的z，本体z轴对应世界系的-x
+        x_error = torch.square(self.commands[:, 0] - self.base_lin_vel[:, 2])
         y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
         # print(torch.mean(self.rew_hanstand),self.rew_hanstand.shape)
-        return torch.exp(-(y_error+x_error)/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
-    
+        return torch.exp(-(y_error+x_error)/self.cfg.rewards.tracking_sigma) * self._clean_front_support_gate() * (self._handstand_height_reward() > 0.8)
+
     def _reward_tracking_ang_vel(self):
         # Tracking of angular velocity commands (yaw) 
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 0])
         # print(torch.mean(self.episode_sums["handstand_orientation"]))
-        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)*(torch.mean(self.rew_hanstand)>0.8)
+        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma) * self._clean_front_support_gate() * (self._handstand_height_reward() > 0.8)
 
     
     def _reward_default_pos(self):
-        # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.descire_joint_pos), dim=1) #* (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        front_thigh_error = torch.abs(self.dof_pos[:, self.front_thigh_dof_indices] - self.descire_joint_pos[self.front_thigh_dof_indices])
+        return torch.mean(front_thigh_error, dim=1)
+
+    def _reward_front_thigh_pos(self):
+        front_thigh_error = torch.abs(self.dof_pos[:, self.front_thigh_dof_indices] - self.descire_joint_pos[self.front_thigh_dof_indices])
+        return torch.mean(front_thigh_error, dim=1) * self.stand_command.squeeze(1)
+
+    def _front_contact_gate(self):
+        front_contact = torch.norm(self.contact_forces[:, self.contact_foot_indices, :], dim=-1) > 1.0
+        return front_contact.float().prod(dim=1)
+
+    def _bad_support_contact(self):
+        penalized_contact = torch.any(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 1.0, dim=1)
+        base_contact = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1.0, dim=1)
+        return (penalized_contact | base_contact).float()
+
+    def _clean_front_support_gate(self):
+        return self._front_contact_gate() * (1. - self._bad_support_contact())
+
+    def _reward_front_support_contact(self):
+        return self._clean_front_support_gate()
+
+    def _reward_front_support_force(self):
+        front_force_z = torch.clip(self.contact_forces[:, self.contact_foot_indices, 2], min=0.)
+        total_force = torch.sum(front_force_z, dim=1)
+        force_balance = torch.abs(front_force_z[:, 0] - front_force_z[:, 1]) / (total_force + 1e-6)
+        enough_force = torch.clip(total_force / self.cfg.rewards.front_support_force_target, max=1.)
+        return torch.exp(-force_balance) * enough_force * self._clean_front_support_gate()
+
+    def _reward_bad_support_contact(self):
+        return self._bad_support_contact()
+
+    def _reward_base_contact(self):
+        return torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1).float()
     
     
     def _reward_feet_contact_forces(self):
@@ -943,7 +1007,7 @@ class Go2_Fronthandstand(BaseTask):
         """
         # self.rew_hanstand=torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
     
-        return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1))
+        return torch.exp(-torch.sum((self.projected_gravity - self.target_gravity) ** 2, dim=1)) * self._clean_front_support_gate()
 
     def _reward_contact(self):
         res = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)

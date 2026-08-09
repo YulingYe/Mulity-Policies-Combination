@@ -43,30 +43,34 @@ class GO2Cfg_Fronthandstand( LeggedRobotCfg ):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
     class commands:
         curriculum = True
-        max_curriculum = 1.
+        max_curriculum = 0.6
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 5. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
         class ranges:
-            lin_vel_x = [-0.8,0.8] # min max [m/s]
-            lin_vel_y = [-0.8, 0.8]   # min max [m/s]
-            ang_vel_yaw = [-0.8, 0.8]    # min max [rad/s]
+            lin_vel_x = [-0.35, 0.35] # min max [m/s]
+            lin_vel_y = [-0.20, 0.20]   # min max [m/s]
+            ang_vel_yaw = [-0.35, 0.35]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.42] # x,y,z [m]
-        rot = [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
+        pos = [0.0, 0.0, 0.52] # x,y,z [m]
+        rot = [0.0, 0.70710678, 0.0, 0.70710678] # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
+        reset_lin_vel_noise = 0.02
+        reset_ang_vel_noise = 0.02
+        reset_to_default_pose = True
+        reset_dof_pos_noise = 0.02
         default_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.1,   # [rad]
-            'RL_hip_joint': 0.1,   # [rad]
-            'FR_hip_joint': -0.1 ,  # [rad]
-            'RR_hip_joint': -0.1,   # [rad]
-            'FL_thigh_joint': 0.8,     # [rad]
-            'RL_thigh_joint': 1.0,#1.,   # [rad]
-            'FR_thigh_joint': 0.8,     # [rad]
-            'RR_thigh_joint': 1.0,#1.,   # [rad]
+            'FL_hip_joint': 0.0,   # [rad]
+            'RL_hip_joint': 0.0,   # [rad]
+            'FR_hip_joint': 0.0 ,  # [rad]
+            'RR_hip_joint': 0.0,   # [rad]
+            'FL_thigh_joint': 2.25,     # [rad]
+            'RL_thigh_joint': 1.0,   # [rad]
+            'FR_thigh_joint': 2.25,     # [rad]
+            'RR_thigh_joint': 1.0,   # [rad]
 
             'FL_calf_joint': -1.5,   # [rad]
             'RL_calf_joint': -1.5,    # [rad]
@@ -79,34 +83,37 @@ class GO2Cfg_Fronthandstand( LeggedRobotCfg ):
             'FR_hip_joint': 0. ,  # [rad]
             'RR_hip_joint': 0.,   # [rad]
 
-            'FL_thigh_joint': 1.75,     # [rad]
-            'RL_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
-            'FR_thigh_joint': 1.75,     # [rad]
-            'RR_thigh_joint': 2.25,#1.,   # [rad] # defult 2.25
+            'FL_thigh_joint': 2.25,     # [rad]  # front stance leg, mirror of rear-handstand support leg
+            'RL_thigh_joint': 1.0,#1.,   # [rad]
+            'FR_thigh_joint': 2.25,     # [rad]  # front stance leg, mirror of rear-handstand support leg
+            'RR_thigh_joint': 1.0,#1.,   # [rad]
 
-            'FL_calf_joint': -1.75,   # [rad]
-            'RL_calf_joint': -1.75,    # [rad]
-            'FR_calf_joint': -1.75,  # [rad]
-            'RR_calf_joint': -1.75,    # [rad]
+            'FL_calf_joint': -1.5,   # [rad]
+            'RL_calf_joint': -1.5,    # [rad]
+            'FR_calf_joint': -1.5,  # [rad]
+            'RR_calf_joint': -1.5,    # [rad]
         }
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 40.}  # [N*m/rad]
-        damping = {'joint': 1}     # [N*m*s/rad]
+        stiffness = {'joint': 40., 'FL_thigh_joint': 45., 'FR_thigh_joint': 45.}  # [N*m/rad]
+        damping = {'joint': 1, 'FL_thigh_joint': 1, 'FR_thigh_joint': 1}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
+        front_thigh_action_bias = 0.0
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
     class asset:
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
         name = "go2"
         foot_name = "foot"
-        penalize_contacts_on = ["thigh", "calf"]
+        penalize_contacts_on = ["thigh", "calf", "Head"]
         terminate_after_contacts_on = ["base"]
-        feet_name_reward=['FL_foot', 'FR_foot']
-        contact_foot=['RL_foot', 'RR_foot']
-        target_gravity=[-1.0, 0.0, 0.0]
+        # Front-handstand: front legs are the stance legs, rear legs should stay airborne.
+        feet_name_reward=['RL_foot', 'RR_foot']
+        contact_foot=['FL_foot', 'FR_foot']
+        # Front-handstand keeps the body pitched in the opposite direction from rear-handstand.
+        target_gravity=[1.0, 0.0, 0.0]
         threshold=5.0
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         disable_gravity = False
@@ -132,24 +139,32 @@ class GO2Cfg_Fronthandstand( LeggedRobotCfg ):
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 0.5
+        stand_command = True
+        command_time = 0.2
     class rewards:
         class scales:
-            termination = -0.0
-            tracking_lin_vel = 2.5
-            tracking_ang_vel = 2.5
+            termination = -1.0
+            tracking_lin_vel = 2.0
+            tracking_ang_vel = 2.0
             lin_vel_z = 0.2
             ang_vel_xy = 0.2
             handstand_orientation = 5.0 #0.1 1.0
             torques = -0.0002
             dof_vel = -0.
             dof_acc = -5.5e-4
-            base_height = 0.6 #0.1 
-            handstand_feet_on_air =  0.4
-            collision = -1.
+            base_height = 0.8 #0.1
+            handstand_feet_on_air =  0.8
+            collision = -1.5
             feet_stumble = -0.0 
             action_rate = -0.01
-            default_pos =-0.3####
-            # contact=0.3
+            default_pos =-0.30####
+            front_thigh_pos = -0.20
+            front_support_contact = 1.5
+            front_support_force = 0.8
+            bad_support_contact = -2.0
+            contact=0.0
+            front_pivot_contact = 0.0
+            base_contact = -2.5
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
@@ -157,6 +172,7 @@ class GO2Cfg_Fronthandstand( LeggedRobotCfg ):
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
         base_height_target = 0.52#0.25
+        front_support_force_target = 120.
         max_contact_force = 200. # forces above this value are penalized
     class normalization:
         class obs_scales:
@@ -246,11 +262,11 @@ class GO2CfgPPO_Fronthandstand(LeggedRobotCfgPPO):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24 # per iteration
-        max_iterations = 8000 # number of policy updates
+        max_iterations = 5000 # number of policy updates
 
         # logging
         save_interval = 200 # check for potential saves every this many iterations
-        experiment_name = 'go2_handstand_4.8'
+        experiment_name = 'go2_fronthandstand'
         run_name = ''
         # load and resume
         resume = False

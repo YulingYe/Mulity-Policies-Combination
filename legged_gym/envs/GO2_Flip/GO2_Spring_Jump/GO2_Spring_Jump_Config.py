@@ -1,25 +1,22 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
+class GO2_Spring_Jump_Cfg_Yu( LeggedRobotCfg ):
     class env:
         # change the observation dim
         frame_stack = 10 #action stack
         c_frame_stack = 3 #critic 网络的堆叠帧数
         num_single_obs = 47 #这个是传感器可以获得到的信息
         num_observations = int(frame_stack * num_single_obs) # 10帧正常的观测
-        single_num_privileged_obs = 69  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
+        single_num_privileged_obs = 65  #不平衡的观测，包含了特权信息，正常传感器获得不到的信息
         num_privileged_obs = int(c_frame_stack * single_num_privileged_obs) # 3帧特权观测
         num_actions = 12
         num_envs = 4096
-        episode_length_s = 3 # episode length in seconds
+        episode_length_s = 5 # episode length in seconds
         env_spacing = 3.  # not used with heightfields/trimeshes 
         joint_num = 12
         send_timeouts=True
-
-        reset_height = 0.1 # [m]
-        reset_landing_error = 0.2 # [in m]
-        reset_orientation_error=0.8 # [in rad]
-        test = False
+        reset_height=0.15
+        test=False
 
 
     class terrain:
@@ -52,15 +49,9 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
         num_commands = 3 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 5. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
-        class ranges: 
-            pos_dx_lim = [-0.0,0.8]
-            pos_dy_lim = [-0.1,0.1]
-            pos_dz_lim = [-0.0,0.8]
-            # These are the steps for the jump distance changes every curriculum update.
-            pos_variation_increment = [0.01,0.01,0.01]
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.32] # x,y,z [m]
+        pos = [0.0, 0.0, 0.39] # x,y,z [m]
         rot = [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
@@ -83,20 +74,20 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
         }
         lie_joint_angles = { # = target angles [rad] when action = 0.0
 
-            'FL_hip_joint': 0.,   # [rad]
-            'RL_hip_joint': 0.,   # [rad]
-            'FR_hip_joint': -0. ,  # [rad]
-            'RR_hip_joint': -0.,   # [rad]
+            'FL_hip_joint': 0.158,   # [rad]
+            'RL_hip_joint': 0.137,   # [rad]
+            'FR_hip_joint': -0.158 ,  # [rad]
+            'RR_hip_joint': -0.137,   # [rad]
 
-            'FL_thigh_joint': 0.9,     # [rad]
-            'RL_thigh_joint': 1.,#1.,   # [rad]
-            'FR_thigh_joint': 0.9,     # [rad]
-            'RR_thigh_joint': 1.,#1.,   # [rad]
+            'FL_thigh_joint': 0.731,     # [rad]
+            'RL_thigh_joint': 0.987,#1.,   # [rad]
+            'FR_thigh_joint': 0.731,     # [rad]
+            'RR_thigh_joint': 0.987,#1.,   # [rad]
 
-            'FL_calf_joint': -2.25,   # [rad]
-            'RL_calf_joint': -2.25,    # [rad]
-            'FR_calf_joint': -2.25,  # [rad]
-            'RR_calf_joint': -2.25,    # [rad]
+            'FL_calf_joint': -1.81,   # [rad]
+            'RL_calf_joint': -1.83,    # [rad]
+            'FR_calf_joint': -1.81,  # [rad]
+            'RR_calf_joint': -1.83,    # [rad]
         }
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
@@ -131,7 +122,7 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
         thickness = 0.01
     class domain_rand:
         randomize_friction = True
-        friction_range = [0.4,0.8]
+        friction_range = [0.3,1.0]
 
         push_robots = True
         push_interval_s = 4
@@ -145,7 +136,7 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
         multiplied_link_mass_range = [0.9, 1.1]
 
         randomize_base_com = True
-        added_base_com_range = [-0.02, 0.02]
+        added_base_com_range = [-0.03, 0.03]
 
         randomize_pd_gains = True
         stiffness_multiplier_range = [0.9, 1.1]  
@@ -164,36 +155,33 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
         add_cmd_action_latency = True
         randomize_cmd_action_latency = True
         range_cmd_action_latency = [1, 3]
-        push_towards_goal=True
+        push_towards_goal=  True
     class rewards:
         class scales:
             before_setting=5.0
-            # setting=5.0
-            line_z=12.
-            angle_y=2.
-            base_height_flight=10.0
-            base_height_stance=20.0
-            orientation=25.0
-            dof_pose_air=-0.2
-            dof_pos_stance=20.0
-            ang_vel_xy=-0.05
+            line_z=16.
+            flight=2.
+            base_height_flight=3.
+            base_height_stance=-10
+            orientation=2.
+            dof_pos=-0.1
+            dof_hip_pos=-1.0
+            ang_vel_xy=-0.2
             torques=-0.0001
-            dof_pos_limits=-5.
-            dof_vel_limits=-5.
+            dof_pos_limits=-10.
+            dof_vel_limits=-1.
             dof_vel=-0.001
-            torque_limits=-1.
             termination=0.0
-            collision=-10.
-            action_rate=-0.005
+            collision=-50.
+            action_rate=-0.01
             feet_contact_forces=-0.1
-            symmetric_joints=-0.5
-            dof_hip_pos=-10.
-
+            land_pos=25.0
+            tracking_lin_vel=5.0
+            line_vel_stance=-3.
+            foot_clearance=-3.
         max_contact_force=150
         only_positive_rewards=False
         reward_sigma=0.25
-        target_height=0.6
-        cycle_time=1.0
         soft_dof_pos_limit=0.9
     class normalization:
         class obs_scales:
@@ -244,7 +232,7 @@ class GO2_Spring_JUMP_Cfg_Yu( LeggedRobotCfg ):
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 
-class GO2_Spring_JUMP_PPO_Yu(LeggedRobotCfgPPO):
+class GO2_Spring_Jump_PPO_Yu(LeggedRobotCfgPPO):
     seed = 1
     runner_class_name = 'OnPolicyRunner'
     class policy:
@@ -285,7 +273,7 @@ class GO2_Spring_JUMP_PPO_Yu(LeggedRobotCfgPPO):
         max_iterations =50000 # number of policy updates
 
         # logging
-        save_interval = 250 # check for potential saves every this many iterations
+        save_interval = 100 # check for potential saves every this many iterations
         experiment_name = 'go2_spring_jump'
         run_name = ''
         # load and resume
