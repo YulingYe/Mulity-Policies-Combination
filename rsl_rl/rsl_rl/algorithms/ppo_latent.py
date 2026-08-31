@@ -42,6 +42,8 @@ from rsl_rl.modules.temporal_gradient_coordinator import TemporalGradientCoordin
 import numpy as np
 from legged_gym import LEGGED_GYM_ROOT_DIR
 
+import random
+
 class PPO_LAT:
     actor_critic: ActorCriticLatent
     discriminator: Discriminator
@@ -469,7 +471,7 @@ class PPO_LAT:
                 self.prev_z = z_batch.detach()
                 cvae_loss, _, _ = self.cvae.loss(reference_obs_batch, condition, beta=self.cvae_beta)
 
-
+                random_number = random.random()
                 # 总损失 = policy + value - entropy bonus + symmetry regularization
                 loss = (
                     surrogate_loss
@@ -477,7 +479,7 @@ class PPO_LAT:
                     - self.entropy_coef * entropy_batch.mean()
                     + self.sym_coef * sym_loss
                     + temporal_loss
-                    + self.cvae_coef * cvae_loss
+                    + self.cvae_coef * cvae_loss * random_number
                 )
 
 

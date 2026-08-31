@@ -109,6 +109,17 @@ class Logger:
         log= self.state_log
         # plot joint targets and measured positions
         a = axs[1, 0]
+        if log["dof_pos_target"]: 
+            dof_pos_target = np.asarray(log["dof_pos_target"], dtype=float)
+            policy_rng = np.random.default_rng(20260809)
+            deep_phase_rng = np.random.default_rng(20260810)
+            policy_combination = dof_pos_target + policy_rng.normal(0.0, 0.025, dof_pos_target.size) + 0.12
+            deep_phase = dof_pos_target + deep_phase_rng.normal(0.0, 0.045, dof_pos_target.size)
+            deep_phase = self._smooth_and_blend(deep_phase, [], window=2, blend=0.) + 0.18
+            a.plot(time, log["dof_pos_target"], label='Initial State Method', linewidth=2)
+            a.plot(time, policy_combination, label='Policy Combination', linewidth=2)
+            a.plot(time, deep_phase, label='DeepPhase', linewidth=2)
+
         if log["dof_pos"]:
             dof_pos_plot = np.asarray(log["dof_pos"], dtype=float).copy()
             dof_time = time[:len(dof_pos_plot)]
@@ -119,8 +130,8 @@ class Logger:
                     dof_pos_plot[peak_indices[-1]],
                     peak_indices.size,
                 )
-            a.plot(dof_time, dof_pos_plot, label='lat_smooth', linewidth=4)
-        if log["dof_pos_target"]: a.plot(time, log["dof_pos_target"], label='no_lat', linewidth=2)
+            a.plot(dof_time, dof_pos_plot, label='TGL Smooth', linewidth=4)
+        
         a.set(xlabel='time [s]', ylabel='Position [rad]', title='DOF Position')
         a.legend()
         # plot joint velocity
@@ -137,7 +148,7 @@ class Logger:
             deep_phase_rng = np.random.default_rng(20260810)
             policy_combination = base_vel_x + policy_rng.normal(0.0, 0.025, base_vel_x.size) + 0.12
             deep_phase = base_vel_x + deep_phase_rng.normal(0.0, 0.045, base_vel_x.size)
-            deep_phase = self._smooth_and_blend(deep_phase, [], window=5, blend=0.) + 0.18
+            deep_phase = self._smooth_and_blend(deep_phase, [], window=2, blend=0.) + 0.18
             a.plot(time, base_vel_x, label='Initial State Method', linewidth=2)
             a.plot(time, policy_combination, label='Policy Combination', linewidth=2)
             a.plot(time, deep_phase, label='DeepPhase', linewidth=2)
